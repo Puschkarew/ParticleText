@@ -123,10 +123,26 @@
         
         <div class="control-group">
             <label>
-                Скорость возврата
-                <span class="value" id="returnSpeedValue">0.030</span>
+                Жёсткость пружины
+                <span class="value" id="springConstantValue">0.4</span>
             </label>
-            <input type="range" id="returnSpeed" min="0.01" max="0.2" step="0.01" value="0.030">
+            <input type="range" id="springConstant" min="0.1" max="1.0" step="0.05" value="0.4">
+        </div>
+        
+        <div class="control-group">
+            <label>
+                Демпфирование
+                <span class="value" id="dampingValue">0.92</span>
+            </label>
+            <input type="range" id="damping" min="0.85" max="0.99" step="0.01" value="0.92">
+        </div>
+        
+        <div class="control-group">
+            <label>
+                Скорость анимации
+                <span class="value" id="timeScaleValue">0.5</span>
+            </label>
+            <input type="range" id="timeScale" min="0.1" max="1.0" step="0.05" value="0.5">
         </div>
         
         <div class="control-group">
@@ -191,9 +207,16 @@
             sphereRadius: 3.0, // Увеличиваем размер текста
             forceStrength: 55.0,
             interactionRadius: 4.0,
-            returnSpeed: 0.030,
+            returnSpeed: 0.030, // Оставляем для обратной совместимости, но используем springConstant
+            springConstant: 0.4, // Жёсткость пружины (сила возврата)
+            damping: 0.92, // Коэффициент демпфирования (затухание колебаний, чем ближе к 1, тем сильнее затухание)
+            timeScale: 0.5, // Глобальный множитель скорости анимации (0.5 = в 2 раза медленнее)
             pointSize: 3, // Размер точек
-            autonomousMotionStrength: 0.005 // Сила автономного движения точек
+            autonomousMotionStrength: 0.005, // Сила автономного движения точек
+            chaosAngle: 45, // Максимальный угол отклонения направления (градусы)
+            chaosStrength: 0.8, // Сила хаотичности (0-1)
+            tangentialForceRatio: 0.4, // Соотношение тангенциальной силы
+            zAxisStrength: 0.6 // Сила Z-компоненты (глубина)
         };
 
         // ========== НАСТРОЙКА SVG ==========
@@ -209,8 +232,11 @@
             
             const center = size / 2;
             
-            // Простой белый круг без градиента
-            ctx.fillStyle = 'rgba(255, 255, 255, 1)';
+            // Белый круг с плавным градиентом от центра к краям (убирает чёрную обводку)
+            const gradient = ctx.createRadialGradient(center, center, 0, center, center, center);
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+            gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+            ctx.fillStyle = gradient;
             ctx.beginPath();
             ctx.arc(center, center, center, 0, Math.PI * 2);
             ctx.fill();
@@ -815,6 +841,48 @@
         const tempVector = new THREE.Vector3();
         const tempVector2 = new THREE.Vector3();
         const tempVector3 = new THREE.Vector3();
+        const tempVector4 = new THREE.Vector3(); // Дополнительный временный вектор для вычислений
+        
+        // Функция для генерации случайного 3D направления с угловым отклонением
+        function randomDirection3D(baseDirection, maxAngleDegrees, chaosStrength) {
+            // Преобразуем угол в радианы
+            const maxAngle = (maxAngleDegrees * Math.PI) / 180;
+            
+            // Генерируем случайный угол отклонения (0 до maxAngle)
+            const angle = Math.random() * maxAngle * chaosStrength;
+            
+            // Генерируем случайный азимутальный угол (0 до 2π)
+            const azimuth = Math.random() * Math.PI * 2;
+            
+            // Генерируем случайный вектор перпендикулярный базовому направлению
+            // Используем метод генерации случайного вектора в сфере
+            let perpendicular = new THREE.Vector3();
+            if (Math.abs(baseDirection.x) < 0.9) {
+                perpendicular.set(1, 0, 0);
+            } else {
+                perpendicular.set(0, 1, 0);
+            }
+            perpendicular.crossVectors(baseDirection, perpendicular).normalize();
+            
+            // Создаём второй перпендикулярный вектор
+            const perpendicular2 = new THREE.Vector3().crossVectors(baseDirection, perpendicular).normalize();
+            
+            // Генерируем случайное отклонение в плоскости, перпендикулярной базовому направлению
+            const cosAngle = Math.cos(angle);
+            const sinAngle = Math.sin(angle);
+            const cosAzimuth = Math.cos(azimuth);
+            const sinAzimuth = Math.sin(azimuth);
+            
+            // Комбинируем базовое направление с перпендикулярными компонентами
+            const result = new THREE.Vector3()
+                .copy(baseDirection)
+                .multiplyScalar(cosAngle)
+                .addScaledVector(perpendicular, sinAngle * cosAzimuth)
+                .addScaledVector(perpendicular2, sinAngle * sinAzimuth)
+                .normalize();
+            
+            return result;
+        }
         
         function updatePhysics() {
             // Проверяем, что геометрия инициализирована
@@ -868,24 +936,70 @@
                 const distance = tempVector.distanceTo(mouse3D);
                 
                 if (distance < CONFIG.interactionRadius && (isPointerDown || speed > 0.001)) {
-                    const direction = tempVector2.subVectors(tempVector, mouse3D).normalize();
-                    const force = (1 - distance / CONFIG.interactionRadius) * forceMultiplier;
+                    // Базовое направление от курсора к точке
+                    const baseDirection = tempVector2.subVectors(tempVector, mouse3D).normalize();
                     
-                    velocities[i3] += direction.x * force * 0.2;
-                    velocities[i3 + 1] += direction.y * force * 0.2;
-                    velocities[i3 + 2] += direction.z * force * 0.2;
+                    // Применяем случайное угловое отклонение для создания хаотичности
+                    const chaoticDirection = randomDirection3D(
+                        baseDirection, 
+                        CONFIG.chaosAngle, 
+                        CONFIG.chaosStrength
+                    );
+                    
+                    // Вычисляем тангенциальное направление (перпендикулярно радиус-вектору)
+                    // Используем векторное произведение для получения перпендикулярного вектора
+                    let tangent = tempVector4.crossVectors(baseDirection, new THREE.Vector3(0, 0, 1));
+                    if (tangent.length() < 0.1) {
+                        // Если векторы коллинеарны, используем другой базовый вектор
+                        tangent.crossVectors(baseDirection, new THREE.Vector3(1, 0, 0));
+                    }
+                    tangent.normalize();
+                    
+                    // Создаём второй перпендикулярный вектор для полного тангенциального пространства
+                    const tangent2 = new THREE.Vector3().crossVectors(baseDirection, tangent).normalize();
+                    
+                    // Добавляем случайную тангенциальную компоненту в плоскости, перпендикулярной радиус-вектору
+                    const tangentialAngle = Math.random() * Math.PI * 2;
+                    const tangentX = Math.cos(tangentialAngle);
+                    const tangentY = Math.sin(tangentialAngle);
+                    tangent.multiplyScalar(tangentX).addScaledVector(tangent2, tangentY);
+                    
+                    // Вычисляем силу с расстоянием
+                    const distanceFactor = 1 - distance / CONFIG.interactionRadius;
+                    const baseForce = distanceFactor * forceMultiplier;
+                    
+                    // Добавляем случайную вариацию силы (0.7-1.3)
+                    const forceVariation = 0.7 + Math.random() * 0.6;
+                    const force = baseForce * forceVariation;
+                    
+                    // Комбинируем радиальную и тангенциальную силы
+                    const radialForce = force * (1 - CONFIG.tangentialForceRatio);
+                    const tangentialForce = force * CONFIG.tangentialForceRatio;
+                    
+                    // Добавляем случайную Z-компоненту для трёхмерности
+                    const zComponent = (Math.random() - 0.5) * 2 * CONFIG.zAxisStrength;
+                    
+                    // Применяем силы к скорости
+                    const finalDirection = new THREE.Vector3()
+                        .copy(chaoticDirection)
+                        .multiplyScalar(radialForce)
+                        .addScaledVector(tangent, tangentialForce);
+                    
+                    velocities[i3] += finalDirection.x * 0.2 * CONFIG.timeScale;
+                    velocities[i3 + 1] += finalDirection.y * 0.2 * CONFIG.timeScale;
+                    velocities[i3 + 2] += (finalDirection.z + zComponent) * 0.2 * CONFIG.timeScale;
                 }
                 
                 // Автономное движение - плавные случайные силы (применяются не каждый кадр для плавности)
                 if (CONFIG.autonomousMotionStrength > 0 && Math.random() < 0.3) {
-                    velocities[i3] += (Math.random() - 0.5) * CONFIG.autonomousMotionStrength * 0.3;
-                    velocities[i3 + 1] += (Math.random() - 0.5) * CONFIG.autonomousMotionStrength * 0.3;
-                    velocities[i3 + 2] += (Math.random() - 0.5) * CONFIG.autonomousMotionStrength * 0.3;
+                    velocities[i3] += (Math.random() - 0.5) * CONFIG.autonomousMotionStrength * 0.3 * CONFIG.timeScale;
+                    velocities[i3 + 1] += (Math.random() - 0.5) * CONFIG.autonomousMotionStrength * 0.3 * CONFIG.timeScale;
+                    velocities[i3 + 2] += (Math.random() - 0.5) * CONFIG.autonomousMotionStrength * 0.3 * CONFIG.timeScale;
                 }
                 
-                positionsArray[i3] += velocities[i3];
-                positionsArray[i3 + 1] += velocities[i3 + 1];
-                positionsArray[i3 + 2] += velocities[i3 + 2];
+                positionsArray[i3] += velocities[i3] * CONFIG.timeScale;
+                positionsArray[i3 + 1] += velocities[i3 + 1] * CONFIG.timeScale;
+                positionsArray[i3 + 2] += velocities[i3 + 2] * CONFIG.timeScale;
                 
                 tempVector.set(
                     positionsArray[i3],
@@ -893,29 +1007,64 @@
                     positionsArray[i3 + 2]
                 );
                 
-                velocities[i3] *= 0.92;
-                velocities[i3 + 1] *= 0.92;
-                velocities[i3 + 2] *= 0.92;
-                
+                // Система пружины-демпфера для возврата к исходной позиции
                 tempVector3.set(
                     originalPositions[i3],
                     originalPositions[i3 + 1],
                     originalPositions[i3 + 2]
                 );
                 
-                const returnForce = tempVector2.subVectors(tempVector3, tempVector);
-                positionsArray[i3] += returnForce.x * CONFIG.returnSpeed;
-                positionsArray[i3 + 1] += returnForce.y * CONFIG.returnSpeed;
-                positionsArray[i3 + 2] += returnForce.z * CONFIG.returnSpeed;
+                // Вычисляем смещение от исходной позиции
+                const displacement = tempVector2.subVectors(tempVector3, tempVector);
+                const displacementLength = displacement.length();
+                const velocityLength = Math.sqrt(
+                    velocities[i3] * velocities[i3] + 
+                    velocities[i3 + 1] * velocities[i3 + 1] + 
+                    velocities[i3 + 2] * velocities[i3 + 2]
+                );
+                
+                // Если смещение и скорость очень маленькие, просто возвращаем на место и останавливаем
+                const threshold = 0.001; // Порог для остановки
+                if (displacementLength < threshold && velocityLength < threshold) {
+                    positionsArray[i3] = originalPositions[i3];
+                    positionsArray[i3 + 1] = originalPositions[i3 + 1];
+                    positionsArray[i3 + 2] = originalPositions[i3 + 2];
+                    velocities[i3] = 0;
+                    velocities[i3 + 1] = 0;
+                    velocities[i3 + 2] = 0;
+                } else {
+                    // Применяем силу пружины: F_spring = springConstant * displacement
+                    const springForceX = displacement.x * CONFIG.springConstant;
+                    const springForceY = displacement.y * CONFIG.springConstant;
+                    const springForceZ = displacement.z * CONFIG.springConstant;
+                    
+                    // Обновляем скорость: velocity += F_spring * dt
+                    // dt примерно равен 1/60 (60 FPS), но для стабильности используем фиксированный шаг
+                    const dt = 0.016 * CONFIG.timeScale; // Применяем глобальный множитель скорости
+                    velocities[i3] += springForceX * dt;
+                    velocities[i3 + 1] += springForceY * dt;
+                    velocities[i3 + 2] += springForceZ * dt;
+                    
+                    // Применяем демпфирование: экспоненциальное затухание скорости
+                    // damping близко к 1.0 означает сильное затухание
+                    velocities[i3] *= CONFIG.damping;
+                    velocities[i3 + 1] *= CONFIG.damping;
+                    velocities[i3 + 2] *= CONFIG.damping;
+                    
+                    // Обновляем позицию: position += velocity * dt
+                    positionsArray[i3] += velocities[i3] * dt;
+                    positionsArray[i3 + 1] += velocities[i3 + 1] * dt;
+                    positionsArray[i3 + 2] += velocities[i3 + 2] * dt;
+                }
                 
                 // Обновляем цвет на основе расстояния от камеры
                 if (colorsArray && i < distances.length && i3 + 2 < colorsArray.length) {
                     const distance = distances[i];
                     // Нормализуем расстояние от 0 до 1
                     const normalizedDistance = distanceRange > 0 ? (distance - minDistance) / distanceRange : 0;
-                    // Инвертируем: ближние точки ярче (1.0), дальние бледнее (0.3)
-                    const brightness = 1.0 - normalizedDistance * 0.7; // От 1.0 до 0.3
-                    const clampedBrightness = Math.max(0.3, Math.min(1.0, brightness));
+                    // Инвертируем: ближние точки ярче (1.0), дальние темнее (0.0)
+                    const brightness = 1.0 - normalizedDistance; // От 1.0 до 0.0
+                    const clampedBrightness = Math.max(0.0, Math.min(1.0, brightness));
                     
                     colorsArray[i3] = clampedBrightness;
                     colorsArray[i3 + 1] = clampedBrightness;
@@ -948,8 +1097,8 @@
                 CONFIG[configKey] = value;
                 
                 // Форматирование значения в зависимости от параметра
-                if (id === 'autonomousMotionStrength' || id === 'returnSpeed') {
-                    valueDisplay.textContent = value.toFixed(3);
+                if (id === 'autonomousMotionStrength' || id === 'springConstant' || id === 'damping') {
+                    valueDisplay.textContent = value.toFixed(2);
                 } else if (value < 1) {
                     valueDisplay.textContent = value.toFixed(2);
                 } else {
@@ -965,7 +1114,9 @@
         setupControl('pointSize', 'pointSize', 'pointSizeValue');
         setupControl('forceStrength', 'forceStrength', 'forceStrengthValue');
         setupControl('interactionRadius', 'interactionRadius', 'interactionRadiusValue');
-        setupControl('returnSpeed', 'returnSpeed', 'returnSpeedValue');
+        setupControl('springConstant', 'springConstant', 'springConstantValue');
+        setupControl('damping', 'damping', 'dampingValue');
+        setupControl('timeScale', 'timeScale', 'timeScaleValue');
         setupControl('autonomousMotionStrength', 'autonomousMotionStrength', 'autonomousMotionStrengthValue');
         
         // Обработчик для количества точек с debounce для оптимизации
