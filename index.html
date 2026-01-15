@@ -400,6 +400,9 @@
         
         // Функция создания текстовой геометрии с поддержкой межбуквенного расстояния
         function createTextGeometry(text, size = 2, height = 0.2, letterSpacing = 0) {
+            // #region agent log
+            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:393',message:'createTextGeometry entry',data:{text:text,size:size,height:height,letterSpacing:letterSpacing,configLetterSpacing:CONFIG.letterSpacing},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+            // #endregion
             const loader = new FontLoader();
             
             return new Promise((resolve, reject) => {
@@ -425,6 +428,9 @@
                             try {
                                 // Если межбуквенное расстояние не задано, создаем геометрию обычным способом
                                 if (letterSpacing === 0) {
+                                    // #region agent log
+                                    fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:428',message:'Using standard TextGeometry (letterSpacing=0)',data:{letterSpacing:letterSpacing},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+                                    // #endregion
                                     const geometry = new TextGeometry(text, {
                                         font: font,
                                         size: size,
@@ -443,6 +449,9 @@
                                     
                                     resolve(geometry);
                                 } else {
+                                    // #region agent log
+                                    fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:447',message:'Creating geometry with letterSpacing',data:{letterSpacing:letterSpacing,text:text,textLength:text.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+                                    // #endregion
                                     // Создаем геометрию для каждой буквы отдельно с отступом
                                     const geometries = [];
                                     let currentX = 0;
@@ -472,6 +481,10 @@
                                         charGeometry.computeBoundingBox();
                                         const charWidth = charGeometry.boundingBox.max.x - charGeometry.boundingBox.min.x;
                                         
+                                        // #region agent log
+                                        fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:476',message:'Processing character',data:{char:char,charWidth:charWidth,currentX:currentX,spacing:size * letterSpacing},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+                                        // #endregion
+                                        
                                         // Сдвигаем букву на текущую позицию
                                         charGeometry.translate(currentX, 0, 0);
                                         
@@ -487,6 +500,10 @@
                                         return;
                                     }
                                     
+                                    // #region agent log
+                                    fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:490',message:'Merging geometries',data:{geometriesCount:geometries.length,finalCurrentX:currentX},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+                                    // #endregion
+                                    
                                     let mergedGeometry = geometries[0];
                                     for (let i = 1; i < geometries.length; i++) {
                                         mergedGeometry = mergedGeometry.merge(geometries[i]);
@@ -495,8 +512,14 @@
                                     
                                     // Центрируем объединенную геометрию
                                     mergedGeometry.computeBoundingBox();
+                                    const bboxBeforeCenter = {minX: mergedGeometry.boundingBox.min.x, maxX: mergedGeometry.boundingBox.max.x, width: mergedGeometry.boundingBox.max.x - mergedGeometry.boundingBox.min.x};
                                     mergedGeometry.center();
                                     mergedGeometry.computeBoundingBox();
+                                    const bboxAfterCenter = {minX: mergedGeometry.boundingBox.min.x, maxX: mergedGeometry.boundingBox.max.x, width: mergedGeometry.boundingBox.max.x - mergedGeometry.boundingBox.min.x};
+                                    
+                                    // #region agent log
+                                    fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:500',message:'Geometry merged and centered',data:{bboxBeforeCenter:bboxBeforeCenter,bboxAfterCenter:bboxAfterCenter},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+                                    // #endregion
                                     
                                     resolve(mergedGeometry);
                                 }
@@ -554,29 +577,39 @@
         
         // Функция генерации частиц на основе текста
         async function generateParticlesFromText() {
-            if (!textGeometry) {
-                // Вычисляем базовый масштаб для текста (для sphereRadius=1.0, текст занимает 80% ширины)
-                const baseScaleFactor = await calculateOptimalTextSize('Starting Point');
-                
-                // Применяем CONFIG.sphereRadius как множитель, но ограничиваем максимальный размер
-                // чтобы текст всегда помещался во вьюпорт (максимум 95% видимой ширины)
-                const cameraDistance = camera.position.z;
-                const fovRad = (camera.fov * Math.PI) / 180;
-                const visibleWidth = 2 * Math.tan(fovRad / 2) * cameraDistance;
-                const maxTextWidth = visibleWidth * 0.95; // Максимум 95% ширины
-                
-                // Вычисляем максимально допустимый scaleFactor
-                const maxScaleFactor = maxTextWidth / cachedTextBaseSize;
-                
-                // Применяем sphereRadius, но ограничиваем максимальным размером
-                const scaleFactor = Math.min(baseScaleFactor * CONFIG.sphereRadius, maxScaleFactor);
-                const finalSize = scaleFactor;
-                const finalHeight = finalSize * 0.5;
-                
-                // Создаем финальную геометрию с правильным размером и межбуквенным расстоянием
-                textGeometry = await createTextGeometry('Starting Point', finalSize, finalHeight, CONFIG.letterSpacing);
-                textGeometry.computeBoundingBox();
-            }
+            // #region agent log
+            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:556',message:'generateParticlesFromText entry',data:{textGeometryExists:!!textGeometry,configLetterSpacing:CONFIG.letterSpacing,cachedTextBaseSize:cachedTextBaseSize},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+            // #endregion
+            // Всегда пересоздаем геометрию, если она не существует или если letterSpacing изменился
+            // Вычисляем базовый масштаб для текста (для sphereRadius=1.0, текст занимает 80% ширины)
+            const baseScaleFactor = await calculateOptimalTextSize('Starting Point');
+            
+            // Применяем CONFIG.sphereRadius как множитель, но ограничиваем максимальный размер
+            // чтобы текст всегда помещался во вьюпорт (максимум 95% видимой ширины)
+            const cameraDistance = camera.position.z;
+            const fovRad = (camera.fov * Math.PI) / 180;
+            const visibleWidth = 2 * Math.tan(fovRad / 2) * cameraDistance;
+            const maxTextWidth = visibleWidth * 0.95; // Максимум 95% ширины
+            
+            // Вычисляем максимально допустимый scaleFactor
+            const maxScaleFactor = maxTextWidth / cachedTextBaseSize;
+            
+            // Применяем sphereRadius, но ограничиваем максимальным размером
+            const scaleFactor = Math.min(baseScaleFactor * CONFIG.sphereRadius, maxScaleFactor);
+            const finalSize = scaleFactor;
+            const finalHeight = finalSize * 0.5;
+            
+            // #region agent log
+            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:577',message:'Before createTextGeometry call',data:{finalSize:finalSize,finalHeight:finalHeight,configLetterSpacing:CONFIG.letterSpacing},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+            // #endregion
+            
+            // Создаем финальную геометрию с правильным размером и межбуквенным расстоянием
+            textGeometry = await createTextGeometry('Starting Point', finalSize, finalHeight, CONFIG.letterSpacing);
+            textGeometry.computeBoundingBox();
+            
+            // #region agent log
+            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:579',message:'textGeometry created',data:{textGeometryCreated:!!textGeometry,bboxWidth:textGeometry.boundingBox.max.x - textGeometry.boundingBox.min.x},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+            // #endregion
             
             const surfacePoints = getTextSurfacePoints(textGeometry, CONFIG.particleCount);
             
@@ -649,7 +682,14 @@
         
         // Функция пересоздания системы точек
         async function recreateParticles() {
+            // #region agent log
+            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:671',message:'recreateParticles entry',data:{textGeometryExists:!!textGeometry,configLetterSpacing:CONFIG.letterSpacing},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+            // #endregion
             await generateParticlesFromText();
+            
+            // #region agent log
+            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:675',message:'After generateParticlesFromText',data:{textGeometryExists:!!textGeometry,positionsLength:positions.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+            // #endregion
             
             if (points) {
                 scene.remove(points);
@@ -693,16 +733,31 @@
         
         // Инициализация
         (async () => {
+            // #region agent log
+            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:735',message:'Initialization started',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+            // #endregion
             try {
+                // #region agent log
+                fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:737',message:'Before generateParticlesFromText',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+                // #endregion
                 await generateParticlesFromText();
+                // #region agent log
+                fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:738',message:'After generateParticlesFromText, creating geometry',data:{positionsLength:positions.length,colorsLength:colors.length,textGeometryExists:!!textGeometry},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+                // #endregion
                 geometry = new THREE.BufferGeometry();
                 geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
                 geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
                 points = new THREE.Points(geometry, material);
                 scene.add(points);
                 isInitialized = true;
+                // #region agent log
+                fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:744',message:'Initialization complete',data:{isInitialized:isInitialized,particleCount:CONFIG.particleCount,geometryCreated:!!geometry,pointsAdded:!!points,pointsCount:points.geometry.attributes.position.count},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+                // #endregion
                 console.log('Инициализация завершена успешно');
             } catch (error) {
+                // #region agent log
+                fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:746',message:'Initialization error',data:{error:error.message,stack:error.stack,errorName:error.name},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+                // #endregion
                 console.error('Ошибка при инициализации текста, используем fallback (сфера):', error);
                 // Fallback: создаем простую сферу в случае ошибки
                 generateParticles();
@@ -712,6 +767,9 @@
                 points = new THREE.Points(geometry, material);
                 scene.add(points);
                 isInitialized = true;
+                // #region agent log
+                fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:755',message:'Fallback initialization complete',data:{isInitialized:isInitialized},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+                // #endregion
                 console.log('Инициализация fallback завершена');
             }
         })();
@@ -941,13 +999,25 @@
         const letterSpacingSlider = document.getElementById('letterSpacing');
         const letterSpacingValue = document.getElementById('letterSpacingValue');
         letterSpacingSlider.addEventListener('input', async (e) => {
+            // #region agent log
+            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:943',message:'letterSpacing slider input',data:{newValue:parseFloat(e.target.value),currentConfigValue:CONFIG.letterSpacing,textGeometryExists:!!textGeometry},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+            // #endregion
             const value = parseFloat(e.target.value);
             CONFIG.letterSpacing = value;
             letterSpacingValue.textContent = value.toFixed(2);
             
+            // #region agent log
+            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:949',message:'Before resetting textGeometry',data:{configLetterSpacing:CONFIG.letterSpacing,textGeometryBefore:!!textGeometry,cachedTextBaseSize:cachedTextBaseSize},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+            // #endregion
+            
             // Пересоздаем геометрию текста с новым межбуквенным расстоянием
             textGeometry = null;
             cachedTextBaseSize = null; // Сбрасываем кэш, так как размер текста изменится
+            
+            // #region agent log
+            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:953',message:'After resetting, before recreateParticles',data:{textGeometryAfter:!!textGeometry,configLetterSpacing:CONFIG.letterSpacing},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+            // #endregion
+            
             await recreateParticles();
         });
         

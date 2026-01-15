@@ -1,4 +1,4 @@
-# Interactive Particle Sphere - PhysX Title
+# ParticleText
 
 Интерактивная 3D визуализация текста из частиц с использованием Three.js.
 
