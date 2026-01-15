@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Particle Sphere</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background: #000;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        
+        canvas {
+            display: block;
+        }
+        
+        #controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(20, 20, 20, 0.9);
+            padding: 20px;
+            border-radius: 8px;
+            color: #fff;
+            min-width: 250px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        #controls h3 {
+            margin-bottom: 15px;
+            font-size: 16px;
+            font-weight: 600;
+        }
+        
+        .control-group {
+            margin-bottom: 15px;
+        }
+        
+        .control-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 12px;
+            color: #ccc;
+        }
+        
+        .control-group input[type="range"] {
+            width: 100%;
+            margin-bottom: 5px;
+        }
+        
+        .control-group .value {
+            font-size: 11px;
+            color: #999;
+            float: right;
+        }
+        
+        #toggleControls {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(20, 20, 20, 0.9);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 10px 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            backdrop-filter: blur(10px);
+        }
+        
+        #toggleControls:hover {
+            background: rgba(30, 30, 30, 0.95);
+        }
+        
+        #controls.hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <h3>Настройки объекта</h3>
+        
+        <div class="control-group">
+            <label>
+                Размер точек
+                <span class="value" id="pointSizeValue">0.3</span>
+            </label>
+            <input type="range" id="pointSize" min="0.05" max="1.0" step="0.01" value="0.3">
+        </div>
+        
+        <div class="control-group">
+            <label>
+                Количество точек
+                <span class="value" id="particleCountValue">2000</span>
+            </label>
+            <input type="range" id="particleCount" min="500" max="5000" step="500" value="2000">
+        </div>
+        
+        <div class="control-group">
+            <label>
+                Размер текста
+                <span class="value" id="sphereRadiusValue">3.0</span>
+            </label>
+            <input type="range" id="sphereRadius" min="1" max="6" step="0.1" value="3.0">
+        </div>
+        
+        <div class="control-group">
+            <label>
+                Сила воздействия
+                <span class="value" id="forceStrengthValue">50</span>
+            </label>
+            <input type="range" id="forceStrength" min="5" max="100" step="5" value="50">
+        </div>
+        
+        <div class="control-group">
+            <label>
+                Радиус воздействия
+                <span class="value" id="interactionRadiusValue">2.5</span>
+            </label>
+            <input type="range" id="interactionRadius" min="0.5" max="5" step="0.1" value="2.5">
+        </div>
+        
+        <div class="control-group">
+            <label>
+                Скорость возврата
+                <span class="value" id="returnSpeedValue">0.08</span>
+            </label>
+            <input type="range" id="returnSpeed" min="0.01" max="0.2" step="0.01" value="0.08">
+        </div>
+        
+        <div class="control-group">
+            <label>
+                Скорость пассивного движения
+                <span class="value" id="autonomousMotionStrengthValue">0.005</span>
+            </label>
+            <input type="range" id="autonomousMotionStrength" min="0" max="0.05" step="0.002" value="0.005">
+        </div>
+        
+        <div class="control-group">
+            <label>
+                Межбуквенное расстояние
+                <span class="value" id="letterSpacingValue">0.3</span>
+            </label>
+            <input type="range" id="letterSpacing" min="0" max="1.0" step="0.05" value="0.3">
+        </div>
+        
+    </div>
+    
+    <button id="toggleControls">Скрыть настройки</button>
+    
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+    
+    <script type="module">
+        import * as THREE from 'three';
+        import { FontLoader } from 'three/addons/loaders/FontLoader.js';
+        import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
+        
+        // Обработка ошибок загрузки
+        window.addEventListener('error', (event) => {
+            console.error('Глобальная ошибка:', event.error);
+            if (event.error && event.error.message && event.error.message.includes('import')) {
+                document.body.innerHTML = '<div style="color: white; padding: 20px; font-family: monospace; background: #222; position: fixed; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; z-index: 10000;">Ошибка загрузки модулей. Убедитесь, что ваш браузер поддерживает ES модули и import maps.<br><br>Проверьте консоль браузера (F12) для деталей.</div>';
+            }
+        });
+
+        // ========== ПАРАМЕТРЫ ==========
+        let CONFIG = {
+            particleCount: 2000,
+            sphereRadius: 3.0, // Увеличиваем размер текста
+            forceStrength: 50.0,
+            interactionRadius: 2.5,
+            returnSpeed: 0.08,
+            pointSize: 0.3, // Увеличиваем размер точек для лучшей видимости
+            autonomousMotionStrength: 0.005, // Сила автономного движения точек
+            letterSpacing: 0.3 // Межбуквенное расстояние (в единицах размера шрифта)
+        };
+
+        // ========== СОЗДАНИЕ КРУГЛОЙ ТЕКСТУРЫ ==========
+        function createCircleTexture(size = 64) {
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            
+            const center = size / 2;
+            
+            // Простой белый круг без градиента
+            ctx.fillStyle = 'rgba(255, 255, 255, 1)';
+            ctx.beginPath();
+            ctx.arc(center, center, center, 0, Math.PI * 2);
+            ctx.fill();
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            return texture;
+        }
+
+        // ========== ИНИЦИАЛИЗАЦИЯ ==========
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x000000);
+        
+        const camera = new THREE.PerspectiveCamera(
+            75,
+            window.innerWidth / window.innerHeight,
+            0.1,
+            1000
+        );
+        camera.position.z = 12;
+        camera.position.y = 0;
+        camera.position.x = 0;
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(renderer.domElement);
+        
+        // ========== ЧАСТИЦЫ ==========
+        let geometry = null;
+        let positions = new Float32Array(CONFIG.particleCount * 3);
+        let originalPositions = new Float32Array(CONFIG.particleCount * 3);
+        let velocities = new Float32Array(CONFIG.particleCount * 3);
+        let colors = new Float32Array(CONFIG.particleCount * 3); // Цвета для каждой точки (RGB)
+        let points = null;
+        let textGeometry = null;
+        
+        const circleTexture = createCircleTexture(64);
+        const material = new THREE.PointsMaterial({
+            color: 0xffffff,
+            size: CONFIG.pointSize,
+            transparent: true,
+            opacity: 0.9,
+            map: circleTexture,
+            alphaTest: 0.1,
+            sizeAttenuation: true,
+            vertexColors: true // Включаем использование цветов вершин
+        });
+        
+        console.log('Three.js загружен:', typeof THREE !== 'undefined');
+        console.log('FontLoader загружен:', typeof FontLoader !== 'undefined');
+        console.log('TextGeometry загружен:', typeof TextGeometry !== 'undefined');
+        
+        // Функция для проверки, находится ли точка внутри mesh (упрощённая версия)
+        function isPointInsideMesh(point, mesh, raycaster) {
+            try {
+                // Используем только одно направление для ускорения
+                const direction = new THREE.Vector3(1, 0, 0);
+                raycaster.set(point, direction);
+                const intersects = raycaster.intersectObject(mesh, false);
+                // Если нечётное число пересечений, точка внутри
+                const isInside = intersects.length % 2 === 1;
+                return isInside;
+            } catch (error) {
+                console.error('Ошибка в isPointInsideMesh:', error);
+                return false;
+            }
+        }
+
+        // Функция для получения точек на поверхности текста
+        // Улучшенная версия: все точки генерируются на поверхности треугольников
+        // для точного соответствия форме текста (как в StringTune-3D)
+        function getTextSurfacePoints(textGeometry, count) {
+            const points = [];
+            const positions = textGeometry.attributes.position;
+            const indices = textGeometry.index;
+            
+            // Получаем все вершины из геометрии текста
+            const vertices = [];
+            for (let i = 0; i < positions.count; i++) {
+                const v = new THREE.Vector3(
+                    positions.getX(i),
+                    positions.getY(i),
+                    positions.getZ(i)
+                );
+                vertices.push(v);
+            }
+            
+            // Вычисляем площади треугольников для равномерного распределения
+            const triangles = [];
+            let totalArea = 0;
+            
+            if (indices && indices.count > 0) {
+                // Используем существующие индексы
+                for (let i = 0; i < indices.count; i += 3) {
+                    const i1 = indices.getX(i);
+                    const i2 = indices.getX(i + 1);
+                    const i3 = indices.getX(i + 2);
+                    
+                    const v1 = vertices[i1];
+                    const v2 = vertices[i2];
+                    const v3 = vertices[i3];
+                    
+                    // Вычисляем площадь треугольника
+                    const edge1 = new THREE.Vector3().subVectors(v2, v1);
+                    const edge2 = new THREE.Vector3().subVectors(v3, v1);
+                    const area = edge1.cross(edge2).length() * 0.5;
+                    
+                    // Игнорируем вырожденные треугольники (слишком маленькие)
+                    if (area > 0.0001) {
+                        triangles.push({ v1, v2, v3, area });
+                        totalArea += area;
+                    }
+                }
+            } else {
+                // Если нет индексов, создаем треугольники из позиций напрямую
+                for (let i = 0; i < vertices.length - 2; i += 3) {
+                    const v1 = vertices[i];
+                    const v2 = vertices[i + 1];
+                    const v3 = vertices[i + 2];
+                    
+                    // Вычисляем площадь треугольника
+                    const edge1 = new THREE.Vector3().subVectors(v2, v1);
+                    const edge2 = new THREE.Vector3().subVectors(v3, v1);
+                    const area = edge1.cross(edge2).length() * 0.5;
+                    
+                    if (area > 0.0001) {
+                        triangles.push({ v1, v2, v3, area });
+                        totalArea += area;
+                    }
+                }
+            }
+            
+            // Если нет треугольников, используем вершины напрямую
+            if (triangles.length === 0) {
+                // Используем все вершины, если их меньше или равно нужному количеству
+                if (vertices.length <= count) {
+                    return vertices.map(v => v.clone());
+                }
+                
+                // Иначе равномерно выбираем вершины
+                const step = vertices.length / count;
+                for (let i = 0; i < count; i++) {
+                    const index = Math.floor(i * step);
+                    points.push(vertices[index].clone());
+                }
+                return points;
+            }
+            
+            // Вычисляем накопленные площади для взвешенного выбора треугольников
+            const cumulativeAreas = [];
+            let cumulativeSum = 0;
+            for (const tri of triangles) {
+                cumulativeSum += tri.area;
+                cumulativeAreas.push(cumulativeSum);
+            }
+            
+            // Генерируем ВСЕ точки на поверхности треугольников
+            // Это обеспечивает точное соответствие форме текста
+            for (let i = 0; i < count; i++) {
+                // Выбираем треугольник взвешенно по площади (равномерное распределение)
+                const randomArea = Math.random() * totalArea;
+                let triangleIndex = 0;
+                for (let j = 0; j < cumulativeAreas.length; j++) {
+                    if (randomArea <= cumulativeAreas[j]) {
+                        triangleIndex = j;
+                        break;
+                    }
+                }
+                
+                const triangle = triangles[triangleIndex];
+                
+                // Генерируем случайную точку на поверхности треугольника
+                // Используем правильное распределение для равномерной выборки
+                let u = Math.random();
+                let v = Math.random();
+                
+                // Исправляем для равномерного распределения на треугольнике
+                if (u + v > 1) {
+                    u = 1 - u;
+                    v = 1 - v;
+                }
+                
+                const w = 1 - u - v;
+                
+                // Вычисляем точку на треугольнике
+                const point = new THREE.Vector3();
+                point.addScaledVector(triangle.v1, u);
+                point.addScaledVector(triangle.v2, v);
+                point.addScaledVector(triangle.v3, w);
+                
+                points.push(point);
+            }
+            
+            return points;
+        }
+        
+        // Функция создания текстовой геометрии с поддержкой межбуквенного расстояния
+        function createTextGeometry(text, size = 2, height = 0.2, letterSpacing = 0) {
+            const loader = new FontLoader();
+            
+            return new Promise((resolve, reject) => {
+                // Используем встроенный шрифт из CDN (пробуем несколько вариантов)
+                const fontUrls = [
+                    'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/fonts/helvetiker_regular.typeface.json',
+                    'https://threejs.org/examples/fonts/helvetiker_regular.typeface.json'
+                ];
+                
+                let currentUrlIndex = 0;
+                
+                const tryLoadFont = (urlIndex) => {
+                    if (urlIndex >= fontUrls.length) {
+                        reject(new Error('Не удалось загрузить шрифт ни с одного источника'));
+                        return;
+                    }
+                    
+                    const fontUrl = fontUrls[urlIndex];
+                
+                    loader.load(
+                        fontUrl,
+                        (font) => {
+                            try {
+                                // Если межбуквенное расстояние не задано, создаем геометрию обычным способом
+                                if (letterSpacing === 0) {
+                                    const geometry = new TextGeometry(text, {
+                                        font: font,
+                                        size: size,
+                                        height: height,
+                                        curveSegments: 24,
+                                        bevelEnabled: true,
+                                        bevelThickness: 0.05,
+                                        bevelSize: 0.05,
+                                        bevelOffset: 0,
+                                        bevelSegments: 3
+                                    });
+                                    
+                                    geometry.computeBoundingBox();
+                                    geometry.center();
+                                    geometry.computeBoundingBox();
+                                    
+                                    resolve(geometry);
+                                } else {
+                                    // Создаем геометрию для каждой буквы отдельно с отступом
+                                    const geometries = [];
+                                    let currentX = 0;
+                                    
+                                    for (let i = 0; i < text.length; i++) {
+                                        const char = text[i];
+                                        
+                                        // Пропускаем пробелы, но добавляем к текущей позиции
+                                        if (char === ' ') {
+                                            currentX += size * 0.3; // Ширина пробела
+                                            continue;
+                                        }
+                                        
+                                        const charGeometry = new TextGeometry(char, {
+                                            font: font,
+                                            size: size,
+                                            height: height,
+                                            curveSegments: 24,
+                                            bevelEnabled: true,
+                                            bevelThickness: 0.05,
+                                            bevelSize: 0.05,
+                                            bevelOffset: 0,
+                                            bevelSegments: 3
+                                        });
+                                        
+                                        // Вычисляем ширину буквы
+                                        charGeometry.computeBoundingBox();
+                                        const charWidth = charGeometry.boundingBox.max.x - charGeometry.boundingBox.min.x;
+                                        
+                                        // Сдвигаем букву на текущую позицию
+                                        charGeometry.translate(currentX, 0, 0);
+                                        
+                                        // Обновляем текущую позицию для следующей буквы
+                                        currentX += charWidth + (size * letterSpacing);
+                                        
+                                        geometries.push(charGeometry);
+                                    }
+                                    
+                                    // Объединяем все геометрии
+                                    if (geometries.length === 0) {
+                                        reject(new Error('Не удалось создать геометрию для текста'));
+                                        return;
+                                    }
+                                    
+                                    let mergedGeometry = geometries[0];
+                                    for (let i = 1; i < geometries.length; i++) {
+                                        mergedGeometry = mergedGeometry.merge(geometries[i]);
+                                        geometries[i].dispose(); // Освобождаем память
+                                    }
+                                    
+                                    // Центрируем объединенную геометрию
+                                    mergedGeometry.computeBoundingBox();
+                                    mergedGeometry.center();
+                                    mergedGeometry.computeBoundingBox();
+                                    
+                                    resolve(mergedGeometry);
+                                }
+                            } catch (error) {
+                                console.error('Ошибка при создании текстовой геометрии:', error);
+                                // Пробуем следующий URL
+                                tryLoadFont(urlIndex + 1);
+                            }
+                        },
+                        undefined,
+                        (error) => {
+                            console.warn(`Ошибка при загрузке шрифта с ${fontUrl}, пробуем следующий источник...`);
+                            // Пробуем следующий URL
+                            tryLoadFont(urlIndex + 1);
+                        }
+                    );
+                };
+                
+                tryLoadFont(0);
+            });
+        }
+        
+        // Кэш для базового размера текста (чтобы не вычислять каждый раз)
+        let cachedTextBaseSize = null;
+        
+        // Функция вычисления оптимального размера текста
+        async function calculateOptimalTextSize(text, baseSize = 1.0) {
+            if (cachedTextBaseSize === null) {
+                // Создаем временную геометрию для вычисления bounding box
+                const tempGeometry = await createTextGeometry(text, baseSize, baseSize * 0.5, CONFIG.letterSpacing);
+                tempGeometry.computeBoundingBox();
+                
+                // Вычисляем размер текста
+                const bbox = tempGeometry.boundingBox;
+                const textWidth = bbox.max.x - bbox.min.x;
+                const textHeight = bbox.max.y - bbox.min.y;
+                cachedTextBaseSize = Math.max(textWidth, textHeight);
+                
+                // Освобождаем память
+                tempGeometry.dispose();
+            }
+            
+            // Вычисляем максимальную видимую ширину на расстоянии камеры
+            const cameraDistance = camera.position.z;
+            const fovRad = (camera.fov * Math.PI) / 180;
+            const visibleWidth = 2 * Math.tan(fovRad / 2) * cameraDistance;
+            
+            // Масштабируем текст так, чтобы он занимал максимум 80% видимой ширины
+            // Возвращаем базовый scaleFactor (для sphereRadius=1.0)
+            const targetWidth = visibleWidth * 0.8;
+            const baseScaleFactor = targetWidth / cachedTextBaseSize;
+            
+            return baseScaleFactor;
+        }
+        
+        // Функция генерации частиц на основе текста
+        async function generateParticlesFromText() {
+            if (!textGeometry) {
+                // Вычисляем базовый масштаб для текста (для sphereRadius=1.0, текст занимает 80% ширины)
+                const baseScaleFactor = await calculateOptimalTextSize('Starting Point');
+                
+                // Применяем CONFIG.sphereRadius как множитель, но ограничиваем максимальный размер
+                // чтобы текст всегда помещался во вьюпорт (максимум 95% видимой ширины)
+                const cameraDistance = camera.position.z;
+                const fovRad = (camera.fov * Math.PI) / 180;
+                const visibleWidth = 2 * Math.tan(fovRad / 2) * cameraDistance;
+                const maxTextWidth = visibleWidth * 0.95; // Максимум 95% ширины
+                
+                // Вычисляем максимально допустимый scaleFactor
+                const maxScaleFactor = maxTextWidth / cachedTextBaseSize;
+                
+                // Применяем sphereRadius, но ограничиваем максимальным размером
+                const scaleFactor = Math.min(baseScaleFactor * CONFIG.sphereRadius, maxScaleFactor);
+                const finalSize = scaleFactor;
+                const finalHeight = finalSize * 0.5;
+                
+                // Создаем финальную геометрию с правильным размером и межбуквенным расстоянием
+                textGeometry = await createTextGeometry('Starting Point', finalSize, finalHeight, CONFIG.letterSpacing);
+                textGeometry.computeBoundingBox();
+            }
+            
+            const surfacePoints = getTextSurfacePoints(textGeometry, CONFIG.particleCount);
+            
+            positions = new Float32Array(CONFIG.particleCount * 3);
+            originalPositions = new Float32Array(CONFIG.particleCount * 3);
+            velocities = new Float32Array(CONFIG.particleCount * 3);
+            colors = new Float32Array(CONFIG.particleCount * 3);
+            
+            let particlesCreated = 0;
+            let posMinX=Infinity,posMaxX=-Infinity,posMinY=Infinity,posMaxY=-Infinity,posMinZ=Infinity,posMaxZ=-Infinity;
+            for (let i = 0; i < CONFIG.particleCount && i < surfacePoints.length; i++) {
+                const i3 = i * 3;
+                const point = surfacePoints[i];
+                
+                positions[i3] = point.x;
+                positions[i3 + 1] = point.y;
+                positions[i3 + 2] = point.z;
+                
+                posMinX=Math.min(posMinX,point.x);posMaxX=Math.max(posMaxX,point.x);
+                posMinY=Math.min(posMinY,point.y);posMaxY=Math.max(posMaxY,point.y);
+                posMinZ=Math.min(posMinZ,point.z);posMaxZ=Math.max(posMaxZ,point.z);
+                
+                originalPositions[i3] = point.x;
+                originalPositions[i3 + 1] = point.y;
+                originalPositions[i3 + 2] = point.z;
+                
+                velocities[i3] = 0;
+                velocities[i3 + 1] = 0;
+                velocities[i3 + 2] = 0;
+                
+                // Инициализируем цвета как белые (1, 1, 1)
+                colors[i3] = 1.0;
+                colors[i3 + 1] = 1.0;
+                colors[i3 + 2] = 1.0;
+                particlesCreated++;
+            }
+        }
+        
+        // Функция генерации частиц (старая версия для сферы - оставлена для совместимости)
+        function generateParticles() {
+            positions = new Float32Array(CONFIG.particleCount * 3);
+            originalPositions = new Float32Array(CONFIG.particleCount * 3);
+            velocities = new Float32Array(CONFIG.particleCount * 3);
+            colors = new Float32Array(CONFIG.particleCount * 3);
+            
+            for (let i = 0; i < CONFIG.particleCount; i++) {
+                const i3 = i * 3;
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(Math.random() * 2 - 1);
+                const r = Math.cbrt(Math.random()) * CONFIG.sphereRadius;
+                
+                positions[i3] = r * Math.sin(phi) * Math.cos(theta);
+                positions[i3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+                positions[i3 + 2] = r * Math.cos(phi);
+                
+                originalPositions[i3] = positions[i3];
+                originalPositions[i3 + 1] = positions[i3 + 1];
+                originalPositions[i3 + 2] = positions[i3 + 2];
+                
+                velocities[i3] = 0;
+                velocities[i3 + 1] = 0;
+                velocities[i3 + 2] = 0;
+                
+                // Инициализируем цвета как белые (1, 1, 1)
+                colors[i3] = 1.0;
+                colors[i3 + 1] = 1.0;
+                colors[i3 + 2] = 1.0;
+            }
+        }
+        
+        // Функция пересоздания системы точек
+        async function recreateParticles() {
+            await generateParticlesFromText();
+            
+            if (points) {
+                scene.remove(points);
+                geometry.dispose();
+            }
+            
+            geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            
+            points = new THREE.Points(geometry, material);
+            scene.add(points);
+        }
+        
+        // Функция масштабирования текстового объекта
+        async function scaleTextObject(newSize) {
+            CONFIG.sphereRadius = newSize;
+            
+            // Пересоздаем текстовую геометрию с новым размером
+            textGeometry = null;
+            await generateParticlesFromText();
+            
+            // Обновляем геометрию точек
+            if (points) {
+                scene.remove(points);
+                if (geometry) {
+                    geometry.dispose();
+                }
+            }
+            
+            geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            
+            points = new THREE.Points(geometry, material);
+            scene.add(points);
+        }
+        
+        // Флаг готовности
+        let isInitialized = false;
+        
+        // Инициализация
+        (async () => {
+            try {
+                await generateParticlesFromText();
+                geometry = new THREE.BufferGeometry();
+                geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+                points = new THREE.Points(geometry, material);
+                scene.add(points);
+                isInitialized = true;
+                console.log('Инициализация завершена успешно');
+            } catch (error) {
+                console.error('Ошибка при инициализации текста, используем fallback (сфера):', error);
+                // Fallback: создаем простую сферу в случае ошибки
+                generateParticles();
+                geometry = new THREE.BufferGeometry();
+                geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+                points = new THREE.Points(geometry, material);
+                scene.add(points);
+                isInitialized = true;
+                console.log('Инициализация fallback завершена');
+            }
+        })();
+        
+        // ========== ВЗАИМОДЕЙСТВИЕ ==========
+        const mouse = new THREE.Vector2();
+        const mouse3D = new THREE.Vector3();
+        const previousMouse = new THREE.Vector2();
+        const mouseVelocity = new THREE.Vector2();
+        
+        const raycaster = new THREE.Raycaster();
+        const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+        
+        function updateMousePosition(event) {
+            previousMouse.copy(mouse);
+            
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            
+            mouseVelocity.x = mouse.x - previousMouse.x;
+            mouseVelocity.y = mouse.y - previousMouse.y;
+            
+            raycaster.setFromCamera(mouse, camera);
+            const intersectionPoint = new THREE.Vector3();
+            raycaster.ray.intersectPlane(plane, intersectionPoint);
+            mouse3D.copy(intersectionPoint);
+        }
+        
+        let isPointerDown = false;
+        
+        function onPointerMove(event) {
+            updateMousePosition(event);
+        }
+        
+        function onPointerDown(event) {
+            isPointerDown = true;
+            updateMousePosition(event);
+        }
+        
+        function onPointerUp(event) {
+            isPointerDown = false;
+        }
+        
+        renderer.domElement.addEventListener('pointermove', onPointerMove);
+        renderer.domElement.addEventListener('pointerdown', onPointerDown);
+        renderer.domElement.addEventListener('pointerup', onPointerUp);
+        
+        // ========== ФИЗИКА ==========
+        const tempVector = new THREE.Vector3();
+        const tempVector2 = new THREE.Vector3();
+        const tempVector3 = new THREE.Vector3();
+        
+        function updatePhysics() {
+            // Проверяем, что геометрия инициализирована
+            if (!isInitialized || !geometry || !geometry.attributes.position) {
+                return;
+            }
+            
+            const positionsArray = geometry.attributes.position.array;
+            const colorsArray = geometry.attributes.color ? geometry.attributes.color.array : null;
+            
+            // Проверяем, что массив имеет правильный размер
+            const actualParticleCount = Math.min(CONFIG.particleCount, positionsArray.length / 3);
+            
+            // Определяем диапазон расстояний для нормализации
+            let minDistance = Infinity;
+            let maxDistance = -Infinity;
+            const distances = [];
+            
+            // Сначала вычисляем все расстояния
+            for (let i = 0; i < actualParticleCount; i++) {
+                const i3 = i * 3;
+                if (i3 + 2 >= positionsArray.length) break;
+                
+                tempVector.set(
+                    positionsArray[i3],
+                    positionsArray[i3 + 1],
+                    positionsArray[i3 + 2]
+                );
+                const distance = tempVector.distanceTo(camera.position);
+                distances.push(distance);
+                minDistance = Math.min(minDistance, distance);
+                maxDistance = Math.max(maxDistance, distance);
+            }
+            
+            // Нормализуем диапазон, чтобы избежать слишком резких переходов
+            const distanceRange = Math.max(maxDistance - minDistance, 0.1);
+            
+            const speed = Math.sqrt(mouseVelocity.x * mouseVelocity.x + mouseVelocity.y * mouseVelocity.y);
+            const forceMultiplier = Math.min(speed * CONFIG.forceStrength, CONFIG.forceStrength * 2);
+            
+            for (let i = 0; i < actualParticleCount; i++) {
+                const i3 = i * 3;
+                if (i3 + 2 >= positionsArray.length) break;
+                
+                tempVector.set(
+                    positionsArray[i3],
+                    positionsArray[i3 + 1],
+                    positionsArray[i3 + 2]
+                );
+                
+                const distance = tempVector.distanceTo(mouse3D);
+                
+                if (distance < CONFIG.interactionRadius && (isPointerDown || speed > 0.001)) {
+                    const direction = tempVector2.subVectors(tempVector, mouse3D).normalize();
+                    const force = (1 - distance / CONFIG.interactionRadius) * forceMultiplier;
+                    
+                    velocities[i3] += direction.x * force * 0.2;
+                    velocities[i3 + 1] += direction.y * force * 0.2;
+                    velocities[i3 + 2] += direction.z * force * 0.2;
+                }
+                
+                // Автономное движение - плавные случайные силы (применяются не каждый кадр для плавности)
+                if (CONFIG.autonomousMotionStrength > 0 && Math.random() < 0.3) {
+                    velocities[i3] += (Math.random() - 0.5) * CONFIG.autonomousMotionStrength * 0.3;
+                    velocities[i3 + 1] += (Math.random() - 0.5) * CONFIG.autonomousMotionStrength * 0.3;
+                    velocities[i3 + 2] += (Math.random() - 0.5) * CONFIG.autonomousMotionStrength * 0.3;
+                }
+                
+                positionsArray[i3] += velocities[i3];
+                positionsArray[i3 + 1] += velocities[i3 + 1];
+                positionsArray[i3 + 2] += velocities[i3 + 2];
+                
+                tempVector.set(
+                    positionsArray[i3],
+                    positionsArray[i3 + 1],
+                    positionsArray[i3 + 2]
+                );
+                
+                velocities[i3] *= 0.92;
+                velocities[i3 + 1] *= 0.92;
+                velocities[i3 + 2] *= 0.92;
+                
+                tempVector3.set(
+                    originalPositions[i3],
+                    originalPositions[i3 + 1],
+                    originalPositions[i3 + 2]
+                );
+                
+                const returnForce = tempVector2.subVectors(tempVector3, tempVector);
+                positionsArray[i3] += returnForce.x * CONFIG.returnSpeed;
+                positionsArray[i3 + 1] += returnForce.y * CONFIG.returnSpeed;
+                positionsArray[i3 + 2] += returnForce.z * CONFIG.returnSpeed;
+                
+                // Обновляем цвет на основе расстояния от камеры
+                if (colorsArray && i < distances.length && i3 + 2 < colorsArray.length) {
+                    const distance = distances[i];
+                    // Нормализуем расстояние от 0 до 1
+                    const normalizedDistance = distanceRange > 0 ? (distance - minDistance) / distanceRange : 0;
+                    // Инвертируем: ближние точки ярче (1.0), дальние бледнее (0.3)
+                    const brightness = 1.0 - normalizedDistance * 0.7; // От 1.0 до 0.3
+                    const clampedBrightness = Math.max(0.3, Math.min(1.0, brightness));
+                    
+                    colorsArray[i3] = clampedBrightness;
+                    colorsArray[i3 + 1] = clampedBrightness;
+                    colorsArray[i3 + 2] = clampedBrightness;
+                }
+            }
+            
+            geometry.attributes.position.needsUpdate = true;
+            if (geometry.attributes.color) {
+                geometry.attributes.color.needsUpdate = true;
+            }
+        }
+        
+        // ========== ПАНЕЛЬ НАСТРОЕК ==========
+        const controls = document.getElementById('controls');
+        const toggleBtn = document.getElementById('toggleControls');
+        
+        toggleBtn.addEventListener('click', () => {
+            controls.classList.toggle('hidden');
+            toggleBtn.textContent = controls.classList.contains('hidden') ? 'Показать настройки' : 'Скрыть настройки';
+        });
+        
+        // Привязка слайдеров к значениям
+        function setupControl(id, configKey, valueId) {
+            const slider = document.getElementById(id);
+            const valueDisplay = document.getElementById(valueId);
+            
+            slider.addEventListener('input', (e) => {
+                const value = parseFloat(e.target.value);
+                CONFIG[configKey] = value;
+                
+                // Форматирование значения в зависимости от параметра
+                if (id === 'autonomousMotionStrength' || id === 'returnSpeed') {
+                    valueDisplay.textContent = value.toFixed(3);
+                } else if (id === 'sphereRadius') {
+                    valueDisplay.textContent = value.toFixed(1);
+                } else if (value < 1) {
+                    valueDisplay.textContent = value.toFixed(2);
+                } else {
+                    valueDisplay.textContent = value.toFixed(0);
+                }
+                
+                if (id === 'pointSize') {
+                    material.size = value;
+                }
+            });
+        }
+        
+        setupControl('pointSize', 'pointSize', 'pointSizeValue');
+        setupControl('forceStrength', 'forceStrength', 'forceStrengthValue');
+        setupControl('interactionRadius', 'interactionRadius', 'interactionRadiusValue');
+        setupControl('returnSpeed', 'returnSpeed', 'returnSpeedValue');
+        setupControl('autonomousMotionStrength', 'autonomousMotionStrength', 'autonomousMotionStrengthValue');
+        
+        // Обработчик для количества точек
+        const particleCountSlider = document.getElementById('particleCount');
+        const particleCountValue = document.getElementById('particleCountValue');
+        particleCountSlider.addEventListener('input', async (e) => {
+            const value = parseInt(e.target.value);
+            CONFIG.particleCount = value;
+            particleCountValue.textContent = value;
+            await recreateParticles();
+        });
+        
+        // Обработчик для размера текстового объекта
+        const sphereRadiusSlider = document.getElementById('sphereRadius');
+        const sphereRadiusValue = document.getElementById('sphereRadiusValue');
+        sphereRadiusSlider.addEventListener('input', async (e) => {
+            const value = parseFloat(e.target.value);
+            await scaleTextObject(value);
+            sphereRadiusValue.textContent = value.toFixed(1);
+        });
+        
+        // Обработчик для межбуквенного расстояния
+        const letterSpacingSlider = document.getElementById('letterSpacing');
+        const letterSpacingValue = document.getElementById('letterSpacingValue');
+        letterSpacingSlider.addEventListener('input', async (e) => {
+            const value = parseFloat(e.target.value);
+            CONFIG.letterSpacing = value;
+            letterSpacingValue.textContent = value.toFixed(2);
+            
+            // Пересоздаем геометрию текста с новым межбуквенным расстоянием
+            textGeometry = null;
+            cachedTextBaseSize = null; // Сбрасываем кэш, так как размер текста изменится
+            await recreateParticles();
+        });
+        
+        // ========== АНИМАЦИЯ ==========
+        function animate() {
+            requestAnimationFrame(animate);
+            updatePhysics();
+            renderer.render(scene, camera);
+        }
+        
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        
+        animate();
+    </script>
+</body>
+</html>
