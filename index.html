@@ -92,25 +92,17 @@
         <div class="control-group">
             <label>
                 Размер точек
-                <span class="value" id="pointSizeValue">0.1</span>
+                <span class="value" id="pointSizeValue">5</span>
             </label>
-            <input type="range" id="pointSize" min="0.05" max="1.0" step="0.01" value="0.1">
+            <input type="range" id="pointSize" min="1" max="10" step="0.1" value="5">
         </div>
         
         <div class="control-group">
             <label>
                 Количество точек
-                <span class="value" id="particleCountValue">2000</span>
+                <span class="value" id="particleCountValue">5000</span>
             </label>
-            <input type="range" id="particleCount" min="500" max="5000" step="500" value="2000">
-        </div>
-        
-        <div class="control-group">
-            <label>
-                Размер текста
-                <span class="value" id="sphereRadiusValue">3.0</span>
-            </label>
-            <input type="range" id="sphereRadius" min="1" max="6" step="0.1" value="3.0">
+            <input type="range" id="particleCount" min="3000" max="10000" step="500" value="5000">
         </div>
         
         <div class="control-group">
@@ -160,8 +152,8 @@
     
     <script type="module">
         import * as THREE from 'three';
-        import { FontLoader } from 'three/addons/loaders/FontLoader.js';
-        import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
+        import { SVGLoader } from 'three/addons/loaders/SVGLoader.js';
+        import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
         
         // Обработка ошибок загрузки
         window.addEventListener('error', (event) => {
@@ -195,14 +187,18 @@
 
         // ========== ПАРАМЕТРЫ ==========
         let CONFIG = {
-            particleCount: 2000,
+            particleCount: 5000,
             sphereRadius: 3.0, // Увеличиваем размер текста
             forceStrength: 50.0,
             interactionRadius: 2.5,
             returnSpeed: 0.08,
-            pointSize: 0.1, // Размер точек
+            pointSize: 5, // Размер точек
             autonomousMotionStrength: 0.005 // Сила автономного движения точек
         };
+
+        // ========== НАСТРОЙКА SVG ==========
+        // Путь к SVG файлу
+        const SVG_PATH = 'Starting Point.svg';
 
         // ========== СОЗДАНИЕ КРУГЛОЙ ТЕКСТУРЫ ==========
         function createCircleTexture(size = 64) {
@@ -227,9 +223,19 @@
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x000000);
         
-        const camera = new THREE.PerspectiveCamera(
-            75,
-            window.innerWidth / window.innerHeight,
+        // Ортографическая камера для устранения перспективных искажений
+        const viewSize = 20; // Размер видимой области
+        const aspect = window.innerWidth / window.innerHeight;
+        const left = -viewSize * aspect / 2;
+        const right = viewSize * aspect / 2;
+        const top = viewSize / 2;
+        const bottom = -viewSize / 2;
+        
+        const camera = new THREE.OrthographicCamera(
+            left,
+            right,
+            top,
+            bottom,
             0.1,
             1000
         );
@@ -249,7 +255,7 @@
         let velocities = new Float32Array(CONFIG.particleCount * 3);
         let colors = new Float32Array(CONFIG.particleCount * 3); // Цвета для каждой точки (RGB)
         let points = null;
-        let textGeometry = null;
+        let svgGeometry = null;
         
         const circleTexture = createCircleTexture(64);
         const material = new THREE.PointsMaterial({
@@ -264,32 +270,67 @@
         });
         
         console.log('Three.js загружен:', typeof THREE !== 'undefined');
-        console.log('FontLoader загружен:', typeof FontLoader !== 'undefined');
-        console.log('TextGeometry загружен:', typeof TextGeometry !== 'undefined');
+        console.log('SVGLoader загружен:', typeof SVGLoader !== 'undefined');
         
-        // Функция для проверки, находится ли точка внутри mesh (упрощённая версия)
+        // Функция для проверки, находится ли точка внутри mesh (оптимизированная версия)
+        // Использует меньше направлений для ускорения, но сохраняет точность
         function isPointInsideMesh(point, mesh, raycaster) {
             try {
-                // Используем только одно направление для ускорения
-                const direction = new THREE.Vector3(1, 0, 0);
-                raycaster.set(point, direction);
-                const intersects = raycaster.intersectObject(mesh, false);
-                // Если нечётное число пересечений, точка внутри
-                const isInside = intersects.length % 2 === 1;
-                return isInside;
+                // #region agent log
+                if (typeof window !== 'undefined' && !window._isPointInsideMeshCallCount) {
+                    window._isPointInsideMeshCallCount = 0;
+                }
+                if (typeof window !== 'undefined') {
+                    window._isPointInsideMeshCallCount++;
+                    if (window._isPointInsideMeshCallCount % 100 === 0) {
+                        fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:278',message:'isPointInsideMesh call count',data:{callCount:window._isPointInsideMeshCallCount},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'B'})}).catch(()=>{});
+                    }
+                }
+                // #endregion
+                // Используем только 3 направления для ускорения (вместо 6)
+                // Это достаточно для определения, находится ли точка внутри объёма
+                const directions = [
+                    new THREE.Vector3(1, 0, 0),
+                    new THREE.Vector3(0, 1, 0),
+                    new THREE.Vector3(0, 0, 1)
+                ];
+                
+                let insideCount = 0;
+                let totalChecks = 0;
+                
+                // Проверяем по каждому направлению
+                for (const direction of directions) {
+                    raycaster.set(point, direction);
+                    const intersects = raycaster.intersectObject(mesh, false);
+                    // Если нечётное число пересечений, точка внутри по этому направлению
+                    const isInside = intersects.length % 2 === 1;
+                    if (isInside) {
+                        insideCount++;
+                    }
+                    totalChecks++;
+                }
+                
+                // Точка считается внутри, если она внутри по большинству направлений (минимум 2 из 3)
+                const threshold = Math.ceil(totalChecks * 0.6); // Минимум 2 из 3
+                return insideCount >= threshold;
             } catch (error) {
+                // #region agent log
+                fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:310',message:'isPointInsideMesh error',data:{error:error.message},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'D'})}).catch(()=>{});
+                // #endregion
                 console.error('Ошибка в isPointInsideMesh:', error);
                 return false;
             }
         }
 
-        // Функция для получения точек на поверхности текста
-        // Улучшенная версия: все точки генерируются на поверхности треугольников
-        // для точного соответствия форме текста (как в StringTune-3D)
-        function getTextSurfacePoints(textGeometry, count) {
+        // Функция для получения точек для закрашивания SVG формы (2D плоскость)
+        // Генерирует точки на поверхности SVG для их закрашивания
+        function getShapeVolumePoints(shapeGeometry, count, raycaster) {
+            // #region agent log
+            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:326',message:'getShapeVolumePoints entry',data:{count:count},timestamp:Date.now(),sessionId:'debug-session',runId:'hybrid-approach',hypothesisId:'G'})}).catch(()=>{});
+            // #endregion
             const points = [];
-            const positions = textGeometry.attributes.position;
-            const indices = textGeometry.index;
+            const positions = shapeGeometry.attributes.position;
+            const indices = shapeGeometry.index;
             
             // Получаем все вершины из геометрии текста
             const vertices = [];
@@ -347,14 +388,11 @@
                 }
             }
             
-            // Если нет треугольников, используем вершины напрямую
             if (triangles.length === 0) {
-                // Используем все вершины, если их меньше или равно нужному количеству
+                // Fallback: используем вершины
                 if (vertices.length <= count) {
                     return vertices.map(v => v.clone());
                 }
-                
-                // Иначе равномерно выбираем вершины
                 const step = vertices.length / count;
                 for (let i = 0; i < count; i++) {
                     const index = Math.floor(i * step);
@@ -371,185 +409,267 @@
                 cumulativeAreas.push(cumulativeSum);
             }
             
-            // Генерируем ВСЕ точки на поверхности треугольников
-            // Это обеспечивает точное соответствие форме текста
+            // Фильтруем треугольники: используем только те, что обращены "вверх" (нормаль с положительным Z)
+            // Это исключает внутренние грани отверстий
+            const frontFacingTriangles = [];
+            let frontFacingArea = 0;
+            
+            for (const tri of triangles) {
+                // Вычисляем нормаль треугольника
+                const edge1 = new THREE.Vector3().subVectors(tri.v2, tri.v1);
+                const edge2 = new THREE.Vector3().subVectors(tri.v3, tri.v1);
+                const normal = new THREE.Vector3().crossVectors(edge1, edge2);
+                
+                // Используем только треугольники с нормалью, направленной вверх (Z > 0)
+                // Это исключает внутренние грани отверстий
+                if (normal.z > 0 && normal.length() > 0.0001) {
+                    frontFacingTriangles.push({ ...tri, area: tri.area });
+                    frontFacingArea += tri.area;
+                }
+            }
+            
+            // Если нет треугольников, обращённых вверх, используем все
+            const trianglesToUse = frontFacingTriangles.length > 0 ? frontFacingTriangles : triangles;
+            const areaToUse = frontFacingTriangles.length > 0 ? frontFacingArea : totalArea;
+            
+            // Вычисляем накопленные площади для выбранных треугольников
+            const filteredCumulativeAreas = [];
+            let filteredCumulativeSum = 0;
+            for (const tri of trianglesToUse) {
+                filteredCumulativeSum += tri.area;
+                filteredCumulativeAreas.push(filteredCumulativeSum);
+            }
+            
+            // Генерируем точки на поверхности букв (2D плоскость)
+            const surfacePoints = [];
+            
+            // #region agent log
+            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:395',message:'generating 2D surface points',data:{triangleCount:triangles.length,frontFacingCount:trianglesToUse.length,needed:count},timestamp:Date.now(),sessionId:'debug-session',runId:'2d-approach',hypothesisId:'G'})}).catch(()=>{});
+            // #endregion
+            
+            // Генерируем точки на поверхности треугольников
             for (let i = 0; i < count; i++) {
-                // Выбираем треугольник взвешенно по площади (равномерное распределение)
-                const randomArea = Math.random() * totalArea;
+                // Выбираем треугольник взвешенно по площади
+                const randomArea = Math.random() * areaToUse;
                 let triangleIndex = 0;
-                for (let j = 0; j < cumulativeAreas.length; j++) {
-                    if (randomArea <= cumulativeAreas[j]) {
+                for (let j = 0; j < filteredCumulativeAreas.length; j++) {
+                    if (randomArea <= filteredCumulativeAreas[j]) {
                         triangleIndex = j;
                         break;
                     }
                 }
                 
-                const triangle = triangles[triangleIndex];
+                const triangle = trianglesToUse[triangleIndex];
                 
                 // Генерируем случайную точку на поверхности треугольника
-                // Используем правильное распределение для равномерной выборки
                 let u = Math.random();
                 let v = Math.random();
-                
-                // Исправляем для равномерного распределения на треугольнике
                 if (u + v > 1) {
                     u = 1 - u;
                     v = 1 - v;
                 }
-                
                 const w = 1 - u - v;
                 
-                // Вычисляем точку на треугольнике
-                const point = new THREE.Vector3();
-                point.addScaledVector(triangle.v1, u);
-                point.addScaledVector(triangle.v2, v);
-                point.addScaledVector(triangle.v3, w);
+                const surfacePoint = new THREE.Vector3();
+                surfacePoint.addScaledVector(triangle.v1, u);
+                surfacePoint.addScaledVector(triangle.v2, v);
+                surfacePoint.addScaledVector(triangle.v3, w);
                 
-                points.push(point);
+                // Устанавливаем Z в 0 для плоского текста (проецируем на плоскость Z=0)
+                surfacePoint.z = 0;
+                
+                surfacePoints.push(surfacePoint);
             }
             
+            // #region agent log
+            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:425',message:'point generation completed',data:{generated:surfacePoints.length,needed:count},timestamp:Date.now(),sessionId:'debug-session',runId:'2d-approach',hypothesisId:'G'})}).catch(()=>{});
+            // #endregion
+            
+            // #region agent log
+            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:420',message:'2D surface points generated',data:{generated:surfacePoints.length,needed:count,triangles:triangles.length},timestamp:Date.now(),sessionId:'debug-session',runId:'2d-approach',hypothesisId:'G'})}).catch(()=>{});
+            // #endregion
+            
+            // Если точек недостаточно, дублируем существующие
+            if (surfacePoints.length === 0) {
+                console.error('Не удалось сгенерировать точки! triangles:', triangles.length, 'vertices:', vertices.length);
+                // #region agent log
+                fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:450',message:'ERROR: no points generated',data:{triangles:triangles.length,vertices:vertices.length},timestamp:Date.now(),sessionId:'debug-session',runId:'2d-approach',hypothesisId:'G'})}).catch(()=>{});
+                // #endregion
+            } else if (surfacePoints.length < count) {
+                // Если точек меньше нужного, дублируем существующие
+                const needed = count - surfacePoints.length;
+                for (let i = 0; i < needed; i++) {
+                    const index = i % surfacePoints.length;
+                    surfacePoints.push(surfacePoints[index].clone());
+                }
+                // #region agent log
+                fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:455',message:'duplicated points to reach count',data:{original:surfacePoints.length-needed,duplicated:needed,final:surfacePoints.length},timestamp:Date.now(),sessionId:'debug-session',runId:'2d-approach',hypothesisId:'G'})}).catch(()=>{});
+                // #endregion
+            }
+            
+            // Возвращаем сгенерированные точки
+            return surfacePoints.map(p => p.clone());
+            
+            // #region agent log
+            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:453',message:'getShapeVolumePoints exit',data:{returnedCount:points.length},timestamp:Date.now(),sessionId:'debug-session',runId:'hybrid-approach',hypothesisId:'G'})}).catch(()=>{});
+            // #endregion
             return points;
         }
         
-        // Кэш для загруженного шрифта
-        let cachedFont = null;
-        let fontLoadPromise = null;
+        // Кэш для загруженного SVG
+        let cachedSVGData = null;
+        let svgLoadPromise = null;
         
-        // Функция загрузки шрифта (с кэшированием)
-        function loadFont() {
-            // Если шрифт уже загружен, возвращаем его сразу
-            if (cachedFont) {
-                return Promise.resolve(cachedFont);
+        // Функция загрузки SVG (с кэшированием)
+        function loadSVG() {
+            // Если SVG уже загружен, возвращаем его сразу
+            if (cachedSVGData) {
+                return Promise.resolve(cachedSVGData);
             }
             
-            // Если шрифт уже загружается, возвращаем существующий промис
-            if (fontLoadPromise) {
-                return fontLoadPromise;
+            // Если SVG уже загружается, возвращаем существующий промис
+            if (svgLoadPromise) {
+                return svgLoadPromise;
             }
             
-            // Создаем новый промис для загрузки шрифта
-            fontLoadPromise = new Promise((resolve, reject) => {
-                const loader = new FontLoader();
-                const fontUrls = [
-                    'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/fonts/helvetiker_regular.typeface.json',
-                    'https://threejs.org/examples/fonts/helvetiker_regular.typeface.json'
-                ];
+            // Создаем новый промис для загрузки SVG
+            svgLoadPromise = new Promise((resolve, reject) => {
+                const loader = new SVGLoader();
                 
-                let currentUrlIndex = 0;
-                
-                const tryLoadFont = (urlIndex) => {
-                    if (urlIndex >= fontUrls.length) {
-                        fontLoadPromise = null; // Сбрасываем промис при ошибке
-                        reject(new Error('Не удалось загрузить шрифт ни с одного источника'));
-                        return;
+                loader.load(
+                    SVG_PATH,
+                    (data) => {
+                        cachedSVGData = data; // Кэшируем загруженный SVG
+                        svgLoadPromise = null; // Сбрасываем промис после успешной загрузки
+                        resolve(data);
+                    },
+                    undefined,
+                    (error) => {
+                        svgLoadPromise = null; // Сбрасываем промис при ошибке
+                        reject(new Error(`Не удалось загрузить SVG: ${error}`));
                     }
-                    
-                    const fontUrl = fontUrls[urlIndex];
-                
-                    loader.load(
-                        fontUrl,
-                        (font) => {
-                            cachedFont = font; // Кэшируем загруженный шрифт
-                            fontLoadPromise = null; // Сбрасываем промис после успешной загрузки
-                            resolve(font);
-                        },
-                        undefined,
-                        (error) => {
-                            console.warn(`Ошибка при загрузке шрифта с ${fontUrl}, пробуем следующий источник...`);
-                            tryLoadFont(urlIndex + 1);
-                        }
-                    );
-                };
-                
-                tryLoadFont(0);
+                );
             });
             
-            return fontLoadPromise;
+            return svgLoadPromise;
         }
         
-        // Функция создания текстовой геометрии с поддержкой межбуквенного расстояния
-        async function createTextGeometry(text, size = 2, height = 0.2) {
-            // Загружаем шрифт (используем кэш, если он уже загружен)
-            const font = await loadFont();
+        // Функция создания геометрии из SVG
+        async function createSVGGeometry(size = 2) {
+            // Загружаем SVG (используем кэш, если он уже загружен)
+            const svgData = await loadSVG();
             
-            const geometry = new TextGeometry(text, {
-                font: font,
-                size: size,
-                height: height,
-                curveSegments: 24,
-                bevelEnabled: true,
-                bevelThickness: 0.05,
-                bevelSize: 0.05,
-                bevelOffset: 0,
-                bevelSegments: 3
-            });
+            // Получаем paths из SVG
+            if (!svgData.paths || svgData.paths.length === 0) {
+                throw new Error('SVG не содержит path элементов');
+            }
             
-            geometry.computeBoundingBox();
-            geometry.center();
-            geometry.computeBoundingBox();
+            // Собираем все shapes из всех paths
+            const allShapes = [];
             
-            return geometry;
+            for (const path of svgData.paths) {
+                const shapesFromPath = SVGLoader.createShapes(path);
+                allShapes.push(...shapesFromPath);
+            }
+            
+            if (allShapes.length === 0) {
+                throw new Error('Не удалось создать shapes из SVG paths');
+            }
+            
+            // Создаем геометрию из всех shapes
+            const geometries = [];
+            
+            for (const shape of allShapes) {
+                const geometry = new THREE.ShapeGeometry(shape);
+                geometries.push(geometry);
+            }
+            
+            // Объединяем все геометрии в одну
+            let mergedGeometry;
+            if (geometries.length === 1) {
+                mergedGeometry = geometries[0];
+            } else {
+                // Используем BufferGeometryUtils.mergeGeometries() вместо несуществующего метода merge()
+                mergedGeometry = BufferGeometryUtils.mergeGeometries(geometries);
+            }
+            
+            // Вычисляем bounding box для масштабирования
+            mergedGeometry.computeBoundingBox();
+            const bbox = mergedGeometry.boundingBox;
+            const svgWidth = bbox.max.x - bbox.min.x;
+            const svgHeight = bbox.max.y - bbox.min.y;
+            const svgMaxDimension = Math.max(svgWidth, svgHeight);
+            
+            // Масштабируем геометрию
+            const scale = size / svgMaxDimension;
+            mergedGeometry.scale(scale, -scale, 1); // Отрицательный Y для инверсии (SVG origin top-left, Three.js bottom-left)
+            
+            // Центрируем геометрию
+            mergedGeometry.computeBoundingBox();
+            mergedGeometry.center();
+            mergedGeometry.computeBoundingBox();
+            
+            return mergedGeometry;
         }
         
-        // Кэш для базового размера текста (чтобы не вычислять каждый раз)
-        let cachedTextBaseSize = null;
+        // Кэш для базового размера SVG (чтобы не вычислять каждый раз)
+        let cachedSVGBaseSize = null;
         
-        // Функция вычисления оптимального размера текста
-        async function calculateOptimalTextSize(text, baseSize = 1.0) {
-            if (cachedTextBaseSize === null) {
+        // Функция вычисления оптимального размера SVG
+        async function calculateOptimalSVGSize(baseSize = 1.0) {
+            if (cachedSVGBaseSize === null) {
                 // Создаем временную геометрию для вычисления bounding box
-                const tempGeometry = await createTextGeometry(text, baseSize, baseSize * 0.5);
+                const tempGeometry = await createSVGGeometry(baseSize);
                 tempGeometry.computeBoundingBox();
                 
-                // Вычисляем размер текста
+                // Вычисляем размер SVG
                 const bbox = tempGeometry.boundingBox;
-                const textWidth = bbox.max.x - bbox.min.x;
-                const textHeight = bbox.max.y - bbox.min.y;
-                cachedTextBaseSize = Math.max(textWidth, textHeight);
+                const svgWidth = bbox.max.x - bbox.min.x;
+                const svgHeight = bbox.max.y - bbox.min.y;
+                cachedSVGBaseSize = Math.max(svgWidth, svgHeight);
                 
                 // Освобождаем память
                 tempGeometry.dispose();
             }
             
-            // Вычисляем максимальную видимую ширину на расстоянии камеры
-            const cameraDistance = camera.position.z;
-            const fovRad = (camera.fov * Math.PI) / 180;
-            const visibleWidth = 2 * Math.tan(fovRad / 2) * cameraDistance;
+            // Для ортографической камеры видимая ширина не зависит от расстояния
+            // Вычисляем видимую ширину из параметров камеры
+            const visibleWidth = camera.right - camera.left;
             
-            // Масштабируем текст так, чтобы он занимал максимум 80% видимой ширины
+            // Масштабируем SVG так, чтобы он занимал максимум 80% видимой ширины
             // Возвращаем базовый scaleFactor (для sphereRadius=1.0)
             const targetWidth = visibleWidth * 0.8;
-            const baseScaleFactor = targetWidth / cachedTextBaseSize;
+            const baseScaleFactor = targetWidth / cachedSVGBaseSize;
             
             return baseScaleFactor;
         }
         
-        // Функция генерации частиц на основе текста
-        async function generateParticlesFromText() {
+        // Функция генерации частиц на основе SVG
+        async function generateParticlesFromSVG() {
             // Всегда пересоздаем геометрию, если она не существует
-            // Вычисляем базовый масштаб для текста (для sphereRadius=1.0, текст занимает 80% ширины)
-            const baseScaleFactor = await calculateOptimalTextSize('Starting Point');
+            // Вычисляем базовый масштаб для SVG (для sphereRadius=1.0, SVG занимает 80% ширины)
+            const baseScaleFactor = await calculateOptimalSVGSize();
             
-            // Применяем CONFIG.sphereRadius как множитель, но ограничиваем максимальный размер
-            // чтобы текст всегда помещался во вьюпорт (максимум 95% видимой ширины)
-            const cameraDistance = camera.position.z;
-            const fovRad = (camera.fov * Math.PI) / 180;
-            const visibleWidth = 2 * Math.tan(fovRad / 2) * cameraDistance;
-            const maxTextWidth = visibleWidth * 0.95; // Максимум 95% ширины
+                // Применяем CONFIG.sphereRadius как множитель, но ограничиваем максимальный размер
+                // чтобы SVG всегда помещался во вьюпорт (максимум 95% видимой ширины)
+                // Для ортографической камеры видимая ширина не зависит от расстояния
+                const visibleWidth = camera.right - camera.left;
+                const maxSVGWidth = visibleWidth * 0.95; // Максимум 95% ширины
             
             // Вычисляем максимально допустимый scaleFactor
-            const maxScaleFactor = maxTextWidth / cachedTextBaseSize;
+            const maxScaleFactor = maxSVGWidth / cachedSVGBaseSize;
             
             // Применяем sphereRadius, но ограничиваем максимальным размером
             const scaleFactor = Math.min(baseScaleFactor * CONFIG.sphereRadius, maxScaleFactor);
             const finalSize = scaleFactor;
-            const finalHeight = finalSize * 0.5;
             
             // Создаем финальную геометрию с правильным размером
-            textGeometry = await createTextGeometry('Starting Point', finalSize, finalHeight);
-            textGeometry.computeBoundingBox();
+            svgGeometry = await createSVGGeometry(finalSize);
+            svgGeometry.computeBoundingBox();
             
-            const surfacePoints = getTextSurfacePoints(textGeometry, CONFIG.particleCount);
+            // Используем raycaster для проверки точек внутри объёма
+            const tempRaycaster = new THREE.Raycaster();
+            const volumePoints = getShapeVolumePoints(svgGeometry, CONFIG.particleCount, tempRaycaster);
             
             positions = new Float32Array(CONFIG.particleCount * 3);
             originalPositions = new Float32Array(CONFIG.particleCount * 3);
@@ -558,9 +678,9 @@
             
             let particlesCreated = 0;
             let posMinX=Infinity,posMaxX=-Infinity,posMinY=Infinity,posMaxY=-Infinity,posMinZ=Infinity,posMaxZ=-Infinity;
-            for (let i = 0; i < CONFIG.particleCount && i < surfacePoints.length; i++) {
+            for (let i = 0; i < CONFIG.particleCount && i < volumePoints.length; i++) {
                 const i3 = i * 3;
-                const point = surfacePoints[i];
+                const point = volumePoints[i];
                 
                 positions[i3] = point.x;
                 positions[i3 + 1] = point.y;
@@ -588,7 +708,7 @@
         
         // Функция пересоздания системы точек
         async function recreateParticles() {
-            await generateParticlesFromText();
+            await generateParticlesFromSVG();
             
             if (points) {
                 scene.remove(points);
@@ -603,13 +723,14 @@
             scene.add(points);
         }
         
-        // Функция масштабирования текстового объекта
-        async function scaleTextObject(newSize) {
+        // Функция масштабирования SVG объекта
+        async function scaleSVGObject(newSize) {
             CONFIG.sphereRadius = newSize;
             
-            // Пересоздаем текстовую геометрию с новым размером
-            textGeometry = null;
-            await generateParticlesFromText();
+            // Пересоздаем SVG геометрию с новым размером
+            svgGeometry = null;
+            cachedSVGBaseSize = null; // Сбрасываем кэш размера
+            await generateParticlesFromSVG();
             
             // Обновляем геометрию точек
             if (points) {
@@ -633,7 +754,7 @@
         // Инициализация
         (async () => {
             try {
-                await generateParticlesFromText();
+                await generateParticlesFromSVG();
                 geometry = new THREE.BufferGeometry();
                 geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
                 geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
@@ -642,8 +763,8 @@
                 isInitialized = true;
                 console.log('Инициализация завершена успешно');
             } catch (error) {
-                console.error('Ошибка при инициализации текста:', error);
-                document.body.innerHTML = '<div style="color: white; padding: 20px; font-family: monospace; background: #222; position: fixed; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; z-index: 10000; flex-direction: column; text-align: center;"><h2>Ошибка загрузки текста</h2><p>Не удалось создать 3D текст "Starting Point".</p><p style="color: #999; font-size: 12px; margin-top: 20px;">Проверьте консоль браузера (F12) для деталей.</p></div>';
+                console.error('Ошибка при инициализации SVG:', error);
+                document.body.innerHTML = '<div style="color: white; padding: 20px; font-family: monospace; background: #222; position: fixed; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; z-index: 10000; flex-direction: column; text-align: center;"><h2>Ошибка загрузки SVG</h2><p>Не удалось загрузить SVG файл "Starting Point.svg".</p><p style="color: #999; font-size: 12px; margin-top: 20px;">Проверьте консоль браузера (F12) для деталей.</p></div>';
             }
         })();
         
@@ -829,8 +950,6 @@
                 // Форматирование значения в зависимости от параметра
                 if (id === 'autonomousMotionStrength' || id === 'returnSpeed') {
                     valueDisplay.textContent = value.toFixed(3);
-                } else if (id === 'sphereRadius') {
-                    valueDisplay.textContent = value.toFixed(1);
                 } else if (value < 1) {
                     valueDisplay.textContent = value.toFixed(2);
                 } else {
@@ -849,24 +968,22 @@
         setupControl('returnSpeed', 'returnSpeed', 'returnSpeedValue');
         setupControl('autonomousMotionStrength', 'autonomousMotionStrength', 'autonomousMotionStrengthValue');
         
-        // Обработчик для количества точек
+        // Обработчик для количества точек с debounce для оптимизации
         const particleCountSlider = document.getElementById('particleCount');
         const particleCountValue = document.getElementById('particleCountValue');
-        particleCountSlider.addEventListener('input', async (e) => {
+        let particleCountTimeout = null;
+        particleCountSlider.addEventListener('input', (e) => {
             const value = parseInt(e.target.value);
             CONFIG.particleCount = value;
             particleCountValue.textContent = value;
-            await recreateParticles();
+            
+            // Debounce: пересоздаём частицы только после остановки изменения слайдера
+            clearTimeout(particleCountTimeout);
+            particleCountTimeout = setTimeout(async () => {
+                await recreateParticles();
+            }, 300); // Ждём 300ms после последнего изменения
         });
         
-        // Обработчик для размера текстового объекта
-        const sphereRadiusSlider = document.getElementById('sphereRadius');
-        const sphereRadiusValue = document.getElementById('sphereRadiusValue');
-        sphereRadiusSlider.addEventListener('input', async (e) => {
-            const value = parseFloat(e.target.value);
-            await scaleTextObject(value);
-            sphereRadiusValue.textContent = value.toFixed(1);
-        });
         
         // ========== АНИМАЦИЯ ==========
         function animate() {
@@ -876,7 +993,13 @@
         }
         
         window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
+            // Обновляем параметры ортографической камеры при изменении размера окна
+            const viewSize = 20;
+            const aspect = window.innerWidth / window.innerHeight;
+            camera.left = -viewSize * aspect / 2;
+            camera.right = viewSize * aspect / 2;
+            camera.top = viewSize / 2;
+            camera.bottom = -viewSize / 2;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
