@@ -92,9 +92,9 @@
         <div class="control-group">
             <label>
                 Размер точек
-                <span class="value" id="pointSizeValue">0.3</span>
+                <span class="value" id="pointSizeValue">0.1</span>
             </label>
-            <input type="range" id="pointSize" min="0.05" max="1.0" step="0.01" value="0.3">
+            <input type="range" id="pointSize" min="0.05" max="1.0" step="0.01" value="0.1">
         </div>
         
         <div class="control-group">
@@ -145,14 +145,6 @@
             <input type="range" id="autonomousMotionStrength" min="0" max="0.05" step="0.002" value="0.005">
         </div>
         
-        <div class="control-group">
-            <label>
-                Межбуквенное расстояние
-                <span class="value" id="letterSpacingValue">0.3</span>
-            </label>
-            <input type="range" id="letterSpacing" min="0" max="1.0" step="0.05" value="0.3">
-        </div>
-        
     </div>
     
     <button id="toggleControls">Скрыть настройки</button>
@@ -174,9 +166,31 @@
         // Обработка ошибок загрузки
         window.addEventListener('error', (event) => {
             console.error('Глобальная ошибка:', event.error);
-            if (event.error && event.error.message && event.error.message.includes('import')) {
-                document.body.innerHTML = '<div style="color: white; padding: 20px; font-family: monospace; background: #222; position: fixed; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; z-index: 10000;">Ошибка загрузки модулей. Убедитесь, что ваш браузер поддерживает ES модули и import maps.<br><br>Проверьте консоль браузера (F12) для деталей.</div>';
+            const isModuleError = event.error && event.error.message && (
+                event.error.message.includes('import') || 
+                event.error.message.includes('CORS') || 
+                event.error.message.includes('Failed to fetch') ||
+                event.error.message.includes('module')
+            );
+            if (isModuleError) {
+                const protocol = window.location.protocol;
+                let errorMsg = 'Ошибка загрузки модулей. ';
+                if (protocol === 'file:') {
+                    errorMsg += 'Вы открыли файл через file:// протокол. ES модули не работают через file:// из-за CORS ограничений.<br><br>Используйте локальный сервер:<br>';
+                    errorMsg += '• Python: <code>python -m http.server 8000</code><br>';
+                    errorMsg += '• Node.js: <code>npx http-server</code><br>';
+                    errorMsg += '• Затем откройте <code>http://localhost:8000</code>';
+                } else {
+                    errorMsg += 'Убедитесь, что ваш браузер поддерживает ES модули и import maps.';
+                }
+                errorMsg += '<br><br>Проверьте консоль браузера (F12) для деталей.';
+                document.body.innerHTML = '<div style="color: white; padding: 20px; font-family: monospace; background: #222; position: fixed; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; z-index: 10000;">' + errorMsg + '</div>';
             }
+        });
+        
+        // Также ловим unhandled promise rejections (могут быть при загрузке модулей)
+        window.addEventListener('unhandledrejection', (event) => {
+            console.error('Unhandled promise rejection:', event.reason);
         });
 
         // ========== ПАРАМЕТРЫ ==========
@@ -186,9 +200,8 @@
             forceStrength: 50.0,
             interactionRadius: 2.5,
             returnSpeed: 0.08,
-            pointSize: 0.3, // Увеличиваем размер точек для лучшей видимости
-            autonomousMotionStrength: 0.005, // Сила автономного движения точек
-            letterSpacing: 0.3 // Межбуквенное расстояние (в единицах размера шрифта)
+            pointSize: 0.1, // Размер точек
+            autonomousMotionStrength: 0.005 // Сила автономного движения точек
         };
 
         // ========== СОЗДАНИЕ КРУГЛОЙ ТЕКСТУРЫ ==========
@@ -398,15 +411,25 @@
             return points;
         }
         
-        // Функция создания текстовой геометрии с поддержкой межбуквенного расстояния
-        function createTextGeometry(text, size = 2, height = 0.2, letterSpacing = 0) {
-            // #region agent log
-            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:393',message:'createTextGeometry entry',data:{text:text,size:size,height:height,letterSpacing:letterSpacing,configLetterSpacing:CONFIG.letterSpacing},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-            // #endregion
-            const loader = new FontLoader();
+        // Кэш для загруженного шрифта
+        let cachedFont = null;
+        let fontLoadPromise = null;
+        
+        // Функция загрузки шрифта (с кэшированием)
+        function loadFont() {
+            // Если шрифт уже загружен, возвращаем его сразу
+            if (cachedFont) {
+                return Promise.resolve(cachedFont);
+            }
             
-            return new Promise((resolve, reject) => {
-                // Используем встроенный шрифт из CDN (пробуем несколько вариантов)
+            // Если шрифт уже загружается, возвращаем существующий промис
+            if (fontLoadPromise) {
+                return fontLoadPromise;
+            }
+            
+            // Создаем новый промис для загрузки шрифта
+            fontLoadPromise = new Promise((resolve, reject) => {
+                const loader = new FontLoader();
                 const fontUrls = [
                     'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/fonts/helvetiker_regular.typeface.json',
                     'https://threejs.org/examples/fonts/helvetiker_regular.typeface.json'
@@ -416,6 +439,7 @@
                 
                 const tryLoadFont = (urlIndex) => {
                     if (urlIndex >= fontUrls.length) {
+                        fontLoadPromise = null; // Сбрасываем промис при ошибке
                         reject(new Error('Не удалось загрузить шрифт ни с одного источника'));
                         return;
                     }
@@ -425,114 +449,13 @@
                     loader.load(
                         fontUrl,
                         (font) => {
-                            try {
-                                // Если межбуквенное расстояние не задано, создаем геометрию обычным способом
-                                if (letterSpacing === 0) {
-                                    // #region agent log
-                                    fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:428',message:'Using standard TextGeometry (letterSpacing=0)',data:{letterSpacing:letterSpacing},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-                                    // #endregion
-                                    const geometry = new TextGeometry(text, {
-                                        font: font,
-                                        size: size,
-                                        height: height,
-                                        curveSegments: 24,
-                                        bevelEnabled: true,
-                                        bevelThickness: 0.05,
-                                        bevelSize: 0.05,
-                                        bevelOffset: 0,
-                                        bevelSegments: 3
-                                    });
-                                    
-                                    geometry.computeBoundingBox();
-                                    geometry.center();
-                                    geometry.computeBoundingBox();
-                                    
-                                    resolve(geometry);
-                                } else {
-                                    // #region agent log
-                                    fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:447',message:'Creating geometry with letterSpacing',data:{letterSpacing:letterSpacing,text:text,textLength:text.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-                                    // #endregion
-                                    // Создаем геометрию для каждой буквы отдельно с отступом
-                                    const geometries = [];
-                                    let currentX = 0;
-                                    
-                                    for (let i = 0; i < text.length; i++) {
-                                        const char = text[i];
-                                        
-                                        // Пропускаем пробелы, но добавляем к текущей позиции
-                                        if (char === ' ') {
-                                            currentX += size * 0.3; // Ширина пробела
-                                            continue;
-                                        }
-                                        
-                                        const charGeometry = new TextGeometry(char, {
-                                            font: font,
-                                            size: size,
-                                            height: height,
-                                            curveSegments: 24,
-                                            bevelEnabled: true,
-                                            bevelThickness: 0.05,
-                                            bevelSize: 0.05,
-                                            bevelOffset: 0,
-                                            bevelSegments: 3
-                                        });
-                                        
-                                        // Вычисляем ширину буквы
-                                        charGeometry.computeBoundingBox();
-                                        const charWidth = charGeometry.boundingBox.max.x - charGeometry.boundingBox.min.x;
-                                        
-                                        // #region agent log
-                                        fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:476',message:'Processing character',data:{char:char,charWidth:charWidth,currentX:currentX,spacing:size * letterSpacing},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-                                        // #endregion
-                                        
-                                        // Сдвигаем букву на текущую позицию
-                                        charGeometry.translate(currentX, 0, 0);
-                                        
-                                        // Обновляем текущую позицию для следующей буквы
-                                        currentX += charWidth + (size * letterSpacing);
-                                        
-                                        geometries.push(charGeometry);
-                                    }
-                                    
-                                    // Объединяем все геометрии
-                                    if (geometries.length === 0) {
-                                        reject(new Error('Не удалось создать геометрию для текста'));
-                                        return;
-                                    }
-                                    
-                                    // #region agent log
-                                    fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:490',message:'Merging geometries',data:{geometriesCount:geometries.length,finalCurrentX:currentX},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-                                    // #endregion
-                                    
-                                    let mergedGeometry = geometries[0];
-                                    for (let i = 1; i < geometries.length; i++) {
-                                        mergedGeometry = mergedGeometry.merge(geometries[i]);
-                                        geometries[i].dispose(); // Освобождаем память
-                                    }
-                                    
-                                    // Центрируем объединенную геометрию
-                                    mergedGeometry.computeBoundingBox();
-                                    const bboxBeforeCenter = {minX: mergedGeometry.boundingBox.min.x, maxX: mergedGeometry.boundingBox.max.x, width: mergedGeometry.boundingBox.max.x - mergedGeometry.boundingBox.min.x};
-                                    mergedGeometry.center();
-                                    mergedGeometry.computeBoundingBox();
-                                    const bboxAfterCenter = {minX: mergedGeometry.boundingBox.min.x, maxX: mergedGeometry.boundingBox.max.x, width: mergedGeometry.boundingBox.max.x - mergedGeometry.boundingBox.min.x};
-                                    
-                                    // #region agent log
-                                    fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:500',message:'Geometry merged and centered',data:{bboxBeforeCenter:bboxBeforeCenter,bboxAfterCenter:bboxAfterCenter},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-                                    // #endregion
-                                    
-                                    resolve(mergedGeometry);
-                                }
-                            } catch (error) {
-                                console.error('Ошибка при создании текстовой геометрии:', error);
-                                // Пробуем следующий URL
-                                tryLoadFont(urlIndex + 1);
-                            }
+                            cachedFont = font; // Кэшируем загруженный шрифт
+                            fontLoadPromise = null; // Сбрасываем промис после успешной загрузки
+                            resolve(font);
                         },
                         undefined,
                         (error) => {
                             console.warn(`Ошибка при загрузке шрифта с ${fontUrl}, пробуем следующий источник...`);
-                            // Пробуем следующий URL
                             tryLoadFont(urlIndex + 1);
                         }
                     );
@@ -540,6 +463,32 @@
                 
                 tryLoadFont(0);
             });
+            
+            return fontLoadPromise;
+        }
+        
+        // Функция создания текстовой геометрии с поддержкой межбуквенного расстояния
+        async function createTextGeometry(text, size = 2, height = 0.2) {
+            // Загружаем шрифт (используем кэш, если он уже загружен)
+            const font = await loadFont();
+            
+            const geometry = new TextGeometry(text, {
+                font: font,
+                size: size,
+                height: height,
+                curveSegments: 24,
+                bevelEnabled: true,
+                bevelThickness: 0.05,
+                bevelSize: 0.05,
+                bevelOffset: 0,
+                bevelSegments: 3
+            });
+            
+            geometry.computeBoundingBox();
+            geometry.center();
+            geometry.computeBoundingBox();
+            
+            return geometry;
         }
         
         // Кэш для базового размера текста (чтобы не вычислять каждый раз)
@@ -549,7 +498,7 @@
         async function calculateOptimalTextSize(text, baseSize = 1.0) {
             if (cachedTextBaseSize === null) {
                 // Создаем временную геометрию для вычисления bounding box
-                const tempGeometry = await createTextGeometry(text, baseSize, baseSize * 0.5, CONFIG.letterSpacing);
+                const tempGeometry = await createTextGeometry(text, baseSize, baseSize * 0.5);
                 tempGeometry.computeBoundingBox();
                 
                 // Вычисляем размер текста
@@ -577,10 +526,7 @@
         
         // Функция генерации частиц на основе текста
         async function generateParticlesFromText() {
-            // #region agent log
-            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:556',message:'generateParticlesFromText entry',data:{textGeometryExists:!!textGeometry,configLetterSpacing:CONFIG.letterSpacing,cachedTextBaseSize:cachedTextBaseSize},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-            // #endregion
-            // Всегда пересоздаем геометрию, если она не существует или если letterSpacing изменился
+            // Всегда пересоздаем геометрию, если она не существует
             // Вычисляем базовый масштаб для текста (для sphereRadius=1.0, текст занимает 80% ширины)
             const baseScaleFactor = await calculateOptimalTextSize('Starting Point');
             
@@ -599,17 +545,9 @@
             const finalSize = scaleFactor;
             const finalHeight = finalSize * 0.5;
             
-            // #region agent log
-            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:577',message:'Before createTextGeometry call',data:{finalSize:finalSize,finalHeight:finalHeight,configLetterSpacing:CONFIG.letterSpacing},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-            // #endregion
-            
-            // Создаем финальную геометрию с правильным размером и межбуквенным расстоянием
-            textGeometry = await createTextGeometry('Starting Point', finalSize, finalHeight, CONFIG.letterSpacing);
+            // Создаем финальную геометрию с правильным размером
+            textGeometry = await createTextGeometry('Starting Point', finalSize, finalHeight);
             textGeometry.computeBoundingBox();
-            
-            // #region agent log
-            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:579',message:'textGeometry created',data:{textGeometryCreated:!!textGeometry,bboxWidth:textGeometry.boundingBox.max.x - textGeometry.boundingBox.min.x},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-            // #endregion
             
             const surfacePoints = getTextSurfacePoints(textGeometry, CONFIG.particleCount);
             
@@ -648,48 +586,9 @@
             }
         }
         
-        // Функция генерации частиц (старая версия для сферы - оставлена для совместимости)
-        function generateParticles() {
-            positions = new Float32Array(CONFIG.particleCount * 3);
-            originalPositions = new Float32Array(CONFIG.particleCount * 3);
-            velocities = new Float32Array(CONFIG.particleCount * 3);
-            colors = new Float32Array(CONFIG.particleCount * 3);
-            
-            for (let i = 0; i < CONFIG.particleCount; i++) {
-                const i3 = i * 3;
-                const theta = Math.random() * Math.PI * 2;
-                const phi = Math.acos(Math.random() * 2 - 1);
-                const r = Math.cbrt(Math.random()) * CONFIG.sphereRadius;
-                
-                positions[i3] = r * Math.sin(phi) * Math.cos(theta);
-                positions[i3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-                positions[i3 + 2] = r * Math.cos(phi);
-                
-                originalPositions[i3] = positions[i3];
-                originalPositions[i3 + 1] = positions[i3 + 1];
-                originalPositions[i3 + 2] = positions[i3 + 2];
-                
-                velocities[i3] = 0;
-                velocities[i3 + 1] = 0;
-                velocities[i3 + 2] = 0;
-                
-                // Инициализируем цвета как белые (1, 1, 1)
-                colors[i3] = 1.0;
-                colors[i3 + 1] = 1.0;
-                colors[i3 + 2] = 1.0;
-            }
-        }
-        
         // Функция пересоздания системы точек
         async function recreateParticles() {
-            // #region agent log
-            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:671',message:'recreateParticles entry',data:{textGeometryExists:!!textGeometry,configLetterSpacing:CONFIG.letterSpacing},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-            // #endregion
             await generateParticlesFromText();
-            
-            // #region agent log
-            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:675',message:'After generateParticlesFromText',data:{textGeometryExists:!!textGeometry,positionsLength:positions.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-            // #endregion
             
             if (points) {
                 scene.remove(points);
@@ -733,44 +632,18 @@
         
         // Инициализация
         (async () => {
-            // #region agent log
-            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:735',message:'Initialization started',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
-            // #endregion
             try {
-                // #region agent log
-                fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:737',message:'Before generateParticlesFromText',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
-                // #endregion
                 await generateParticlesFromText();
-                // #region agent log
-                fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:738',message:'After generateParticlesFromText, creating geometry',data:{positionsLength:positions.length,colorsLength:colors.length,textGeometryExists:!!textGeometry},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
-                // #endregion
                 geometry = new THREE.BufferGeometry();
                 geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
                 geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
                 points = new THREE.Points(geometry, material);
                 scene.add(points);
                 isInitialized = true;
-                // #region agent log
-                fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:744',message:'Initialization complete',data:{isInitialized:isInitialized,particleCount:CONFIG.particleCount,geometryCreated:!!geometry,pointsAdded:!!points,pointsCount:points.geometry.attributes.position.count},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
-                // #endregion
                 console.log('Инициализация завершена успешно');
             } catch (error) {
-                // #region agent log
-                fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:746',message:'Initialization error',data:{error:error.message,stack:error.stack,errorName:error.name},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
-                // #endregion
-                console.error('Ошибка при инициализации текста, используем fallback (сфера):', error);
-                // Fallback: создаем простую сферу в случае ошибки
-                generateParticles();
-                geometry = new THREE.BufferGeometry();
-                geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-                geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-                points = new THREE.Points(geometry, material);
-                scene.add(points);
-                isInitialized = true;
-                // #region agent log
-                fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:755',message:'Fallback initialization complete',data:{isInitialized:isInitialized},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
-                // #endregion
-                console.log('Инициализация fallback завершена');
+                console.error('Ошибка при инициализации текста:', error);
+                document.body.innerHTML = '<div style="color: white; padding: 20px; font-family: monospace; background: #222; position: fixed; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; z-index: 10000; flex-direction: column; text-align: center;"><h2>Ошибка загрузки текста</h2><p>Не удалось создать 3D текст "Starting Point".</p><p style="color: #999; font-size: 12px; margin-top: 20px;">Проверьте консоль браузера (F12) для деталей.</p></div>';
             }
         })();
         
@@ -993,32 +866,6 @@
             const value = parseFloat(e.target.value);
             await scaleTextObject(value);
             sphereRadiusValue.textContent = value.toFixed(1);
-        });
-        
-        // Обработчик для межбуквенного расстояния
-        const letterSpacingSlider = document.getElementById('letterSpacing');
-        const letterSpacingValue = document.getElementById('letterSpacingValue');
-        letterSpacingSlider.addEventListener('input', async (e) => {
-            // #region agent log
-            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:943',message:'letterSpacing slider input',data:{newValue:parseFloat(e.target.value),currentConfigValue:CONFIG.letterSpacing,textGeometryExists:!!textGeometry},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-            // #endregion
-            const value = parseFloat(e.target.value);
-            CONFIG.letterSpacing = value;
-            letterSpacingValue.textContent = value.toFixed(2);
-            
-            // #region agent log
-            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:949',message:'Before resetting textGeometry',data:{configLetterSpacing:CONFIG.letterSpacing,textGeometryBefore:!!textGeometry,cachedTextBaseSize:cachedTextBaseSize},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-            // #endregion
-            
-            // Пересоздаем геометрию текста с новым межбуквенным расстоянием
-            textGeometry = null;
-            cachedTextBaseSize = null; // Сбрасываем кэш, так как размер текста изменится
-            
-            // #region agent log
-            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:953',message:'After resetting, before recreateParticles',data:{textGeometryAfter:!!textGeometry,configLetterSpacing:CONFIG.letterSpacing},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-            // #endregion
-            
-            await recreateParticles();
         });
         
         // ========== АНИМАЦИЯ ==========
