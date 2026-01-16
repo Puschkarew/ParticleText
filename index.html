@@ -37,9 +37,37 @@
             border-radius: 8px;
             color: #fff;
             min-width: 250px;
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
+            overflow-x: hidden;
             backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.1);
             z-index: 10;
+        }
+        
+        /* Стилизация скроллбара для панели управления */
+        #controls::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        #controls::-webkit-scrollbar-track {
+            background: rgba(10, 10, 10, 0.5);
+            border-radius: 4px;
+        }
+        
+        #controls::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+        }
+        
+        #controls::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        
+        /* Для Firefox */
+        #controls {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255, 255, 255, 0.2) rgba(10, 10, 10, 0.5);
         }
         
         #controls h3 {
@@ -91,6 +119,77 @@
         
         #controls.hidden {
             display: none;
+        }
+        
+        .apply-button {
+            background: rgba(50, 150, 255, 0.8);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            width: 100%;
+            margin-top: 10px;
+            transition: background 0.2s;
+        }
+        
+        .apply-button:hover {
+            background: rgba(50, 150, 255, 1.0);
+        }
+        
+        .apply-button:active {
+            background: rgba(30, 120, 220, 1.0);
+        }
+        
+        #curveEditor {
+            width: 100% !important;
+            height: 200px !important;
+            background: rgba(10, 10, 10, 0.5) !important;
+            border: 1px solid rgba(255, 255, 255, 0.2) !important;
+            border-radius: 4px !important;
+            cursor: crosshair !important;
+            margin-top: 0px !important;
+            display: block !important;
+            position: static !important;
+            left: auto !important;
+            top: auto !important;
+            transform: none !important;
+            box-sizing: content-box !important;
+            overflow: visible !important;
+            font-weight: 500 !important;
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: crisp-edges;
+        }
+        
+        .preset-buttons {
+            display: flex;
+            gap: 5px;
+            margin-top: 8px;
+            flex-wrap: wrap;
+        }
+        
+        .preset-button {
+            background: rgba(40, 40, 40, 0.8);
+            color: #ccc;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            transition: all 0.2s;
+            flex: 1;
+            min-width: 60px;
+        }
+        
+        .preset-button:hover {
+            background: rgba(60, 60, 60, 0.9);
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+        
+        .preset-button:active {
+            background: rgba(50, 150, 255, 0.3);
         }
     </style>
 </head>
@@ -178,6 +277,34 @@
             <input type="range" id="scrollDepth" min="0" max="500" step="10" value="300">
         </div>
         
+        <div style="margin-top: 20px; padding-top: 20px; border-top: 2px solid rgba(255,255,255,0.2);">
+            <h3 style="margin-bottom: 15px; font-size: 16px; font-weight: 600;">Настройки анимации загрузки</h3>
+            
+            <div class="control-group">
+                <label>
+                    Длительность анимации (мс)
+                    <span class="value" id="loadAnimationDurationValue">4500</span>
+                </label>
+                <input type="range" id="loadAnimationDuration" min="2000" max="8000" step="100" value="4500">
+            </div>
+            
+            <div class="control-group">
+                <label style="margin-bottom: 8px;">
+                    Кривая скорости анимации
+                </label>
+                <div style="font-size: 10px; color: #999; margin-bottom: 5px;">Перетащите точки для настройки скорости в разные моменты времени</div>
+                <canvas id="curveEditor"></canvas>
+                <div class="preset-buttons">
+                    <button class="preset-button" data-preset="linear">Linear</button>
+                    <button class="preset-button" data-preset="ease-in">Ease In</button>
+                    <button class="preset-button" data-preset="ease-out">Ease Out</button>
+                    <button class="preset-button" data-preset="ease-in-out">Ease In-Out</button>
+                </div>
+            </div>
+            
+            <button id="restartLoadAnimation" class="apply-button">Применить и перезапустить</button>
+        </div>
+        
         <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1); font-size: 10px; color: #666;">
             Версия: scroll-spread-v3-20250116
         </div>
@@ -231,6 +358,35 @@
         });
 
         // ========== ПАРАМЕТРЫ ==========
+        // Функция загрузки настроек из localStorage
+        function loadConfigFromStorage() {
+            const saved = localStorage.getItem('particleConfig');
+            if (saved) {
+                try {
+                    return JSON.parse(saved);
+                } catch (e) {
+                    console.warn('Ошибка загрузки настроек из localStorage:', e);
+                }
+            }
+            return null;
+        }
+        
+        // Функция сохранения настроек в localStorage
+        function saveConfigToStorage() {
+            try {
+                const configToSave = {
+                    loadAnimationDuration: CONFIG.loadAnimationDuration,
+                    loadAnimationEasingCurve: CONFIG.loadAnimationEasingCurve
+                };
+                localStorage.setItem('particleConfig', JSON.stringify(configToSave));
+            } catch (e) {
+                console.warn('Ошибка сохранения настроек в localStorage:', e);
+            }
+        }
+        
+        // Загружаем сохраненные настройки
+        const savedConfig = loadConfigFromStorage();
+        
         let CONFIG = {
             particleCount: 3000,
             sphereRadius: 3.0, // Увеличиваем размер текста
@@ -250,7 +406,8 @@
             scrollDepth: 300, // Глубина скролла (vh) - скрыт в UI
             isLoadingAnimation: true, // Флаг активной анимации загрузки
             loadAnimationStartTime: null, // Время начала анимации
-            loadAnimationDuration: 3000 // Длительность анимации (3 секунды)
+            loadAnimationDuration: savedConfig?.loadAnimationDuration ?? 4500, // Длительность анимации (4.5 секунды)
+            loadAnimationEasingCurve: savedConfig?.loadAnimationEasingCurve ?? { p1x: 0.42, p1y: 0, p2x: 0.58, p2y: 1 } // Кривая Безье для управления скоростью (по умолчанию ease-in-out)
         };
 
         // ========== НАСТРОЙКА SVG ==========
@@ -1035,11 +1192,6 @@
         const tempVector4 = new THREE.Vector3(); // Дополнительный временный вектор для вычислений
         const tempVector5 = new THREE.Vector3(); // Временный вектор для скролла
         
-        // Функция для плавного перехода (ease-out cubic)
-        function easeOutCubic(t) {
-            return 1 - Math.pow(1 - t, 3);
-        }
-        
         // Функция для генерации случайного 3D направления с угловым отклонением
         function randomDirection3D(baseDirection, maxAngleDegrees, chaosStrength) {
             // Преобразуем угол в радианы
@@ -1081,6 +1233,31 @@
             return result;
         }
         
+        // Функция вычисления значения кубической кривой Безье для easing
+        // t: прогресс времени (0-1)
+        // p1x, p1y, p2x, p2y: контрольные точки Безье (фиксированные точки: (0,0) и (1,1))
+        // Возвращает значение кривой (0-1), которое используется как множитель скорости
+        function bezierEasing(t, p1x, p1y, p2x, p2y) {
+            // Ограничиваем t в диапазоне [0, 1]
+            t = Math.max(0, Math.min(1, t));
+            
+            // Кубическая кривая Безье: B(t) = (1-t)³P₀ + 3(1-t)²tP₁ + 3(1-t)t²P₂ + t³P₃
+            // где P₀ = (0,0), P₁ = (p1x, p1y), P₂ = (p2x, p2y), P₃ = (1,1)
+            const oneMinusT = 1 - t;
+            const oneMinusT2 = oneMinusT * oneMinusT;
+            const oneMinusT3 = oneMinusT2 * oneMinusT;
+            const t2 = t * t;
+            const t3 = t2 * t;
+            
+            // Вычисляем Y-координату кривой
+            const y = oneMinusT3 * 0 + 
+                      3 * oneMinusT2 * t * p1y + 
+                      3 * oneMinusT * t2 * p2y + 
+                      t3 * 1;
+            
+            return y;
+        }
+        
         function updatePhysics() {
             // Проверяем, что геометрия инициализирована
             if (!isInitialized || !geometry || !geometry.attributes.position) {
@@ -1089,22 +1266,50 @@
             
             const positionsArray = geometry.attributes.position.array;
             
-            // Логика анимации загрузки
+            // Логика анимации загрузки (пружинная физика)
             if (CONFIG.isLoadingAnimation && CONFIG.loadAnimationStartTime !== null) {
                 const elapsed = Date.now() - CONFIG.loadAnimationStartTime;
                 const progress = Math.min(1, elapsed / CONFIG.loadAnimationDuration);
-                const easedProgress = easeOutCubic(progress);
+                
+                // Вычисляем значение кривой Безье для текущего прогресса
+                // Кривая определяет прогресс интерполяции в разные моменты времени
+                // Для easing-функции используем только Y-координату, так как X уже задан параметром progress
+                const easingValue = bezierEasing(
+                    progress,
+                    CONFIG.loadAnimationEasingCurve.p1x,
+                    CONFIG.loadAnimationEasingCurve.p1y,
+                    CONFIG.loadAnimationEasingCurve.p2x,
+                    CONFIG.loadAnimationEasingCurve.p2y
+                );
+                
+                // #region agent log
+                if (Math.floor(progress * 10) % 2 === 0) {
+                    fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:1276',message:'animation easing',data:{progress:progress,easingValue:easingValue,p1x:CONFIG.loadAnimationEasingCurve.p1x,p1y:CONFIG.loadAnimationEasingCurve.p1y,p2x:CONFIG.loadAnimationEasingCurve.p2x,p2y:CONFIG.loadAnimationEasingCurve.p2y},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'B'})}).catch(()=>{});
+                }
+                // #endregion
                 
                 const actualParticleCount = Math.min(CONFIG.particleCount, positionsArray.length / 3);
                 
-                // Интерполируем позиции между начальными и целевыми
+                // Прямая интерполяция между начальными и целевыми позициями
+                // easingValue управляется кривой Безье и определяет прогресс анимации
                 for (let i = 0; i < actualParticleCount; i++) {
                     const i3 = i * 3;
                     if (i3 + 2 >= positionsArray.length) break;
                     
-                    positionsArray[i3] = startPositions[i3] + (originalPositions[i3] - startPositions[i3]) * easedProgress;
-                    positionsArray[i3 + 1] = startPositions[i3 + 1] + (originalPositions[i3 + 1] - startPositions[i3 + 1]) * easedProgress;
-                    positionsArray[i3 + 2] = startPositions[i3 + 2] + (originalPositions[i3 + 2] - startPositions[i3 + 2]) * easedProgress;
+                    // Начальная позиция
+                    const startX = startPositions[i3];
+                    const startY = startPositions[i3 + 1];
+                    const startZ = startPositions[i3 + 2];
+                    
+                    // Целевая позиция
+                    const targetX = originalPositions[i3];
+                    const targetY = originalPositions[i3 + 1];
+                    const targetZ = originalPositions[i3 + 2];
+                    
+                    // Линейная интерполяция: position = start + (target - start) * easingValue
+                    positionsArray[i3] = startX + (targetX - startX) * easingValue;
+                    positionsArray[i3 + 1] = startY + (targetY - startY) * easingValue;
+                    positionsArray[i3 + 2] = startZ + (targetZ - startZ) * easingValue;
                 }
                 
                 geometry.attributes.position.needsUpdate = true;
@@ -1155,7 +1360,7 @@
                     geometry.attributes.color.needsUpdate = true;
                 }
                 
-                // Когда анимация завершена, переключаемся на обычную физику
+                // Проверяем, завершена ли анимация по времени
                 if (progress >= 1.0) {
                     CONFIG.isLoadingAnimation = false;
                 } else {
@@ -1391,6 +1596,458 @@
         setupControl('autonomousMotionStrength', 'autonomousMotionStrength', 'autonomousMotionStrengthValue');
         setupControl('scrollSpreadForce', 'scrollSpreadForce', 'scrollSpreadForceValue');
         setupControl('scrollDepth', 'scrollDepth', 'scrollDepthValue');
+        setupControl('loadAnimationDuration', 'loadAnimationDuration', 'loadAnimationDurationValue');
+        
+        // Обновляем значения слайдеров из сохраненных настроек
+        if (savedConfig) {
+            const durationSlider = document.getElementById('loadAnimationDuration');
+            
+            if (durationSlider && savedConfig.loadAnimationDuration !== undefined) {
+                durationSlider.value = savedConfig.loadAnimationDuration;
+                document.getElementById('loadAnimationDurationValue').textContent = savedConfig.loadAnimationDuration.toFixed(0);
+            }
+            if (savedConfig.loadAnimationEasingCurve) {
+                CONFIG.loadAnimationEasingCurve = savedConfig.loadAnimationEasingCurve;
+            }
+        }
+        
+        // Сохранение настроек при изменении
+        const loadAnimationSliders = ['loadAnimationDuration'];
+        loadAnimationSliders.forEach(id => {
+            const slider = document.getElementById(id);
+            if (slider) {
+                slider.addEventListener('input', () => {
+                    saveConfigToStorage();
+                });
+            }
+        });
+        
+        // ========== РЕДАКТОР КРИВОЙ БЕЗЬЕ ==========
+        const curveCanvas = document.getElementById('curveEditor');
+        
+        // Функция для исправления позиции и стилей canvas
+        function fixCanvasPosition() {
+            // Находим блок "Настройки анимации загрузки"
+            const loadAnimationSection = Array.from(document.querySelectorAll('#controls > div')).find(div => {
+                const style = div.getAttribute('style') || '';
+                return style.includes('border-top: 2px solid');
+            });
+            
+            if (!loadAnimationSection) return;
+            
+            // Находим правильный control-group по тексту label
+            const correctControlGroup = Array.from(loadAnimationSection.querySelectorAll('.control-group')).find(cg => {
+                const label = cg.querySelector('label');
+                return label && label.textContent.includes('Кривая скорости анимации');
+            });
+            
+            if (!correctControlGroup) return;
+            
+            // Удаляем все inline стили, которые могут мешать
+            curveCanvas.removeAttribute('style');
+            
+            // Устанавливаем только необходимые стили через CSS класс
+            curveCanvas.style.cssText = 'cursor: crosshair;';
+            
+            // Проверяем, находится ли canvas в правильном месте
+            if (curveCanvas.parentElement !== correctControlGroup) {
+                // Находим описание внутри control-group
+                const descriptionDiv = correctControlGroup.querySelector('div[style*="font-size: 10px"]');
+                
+                if (descriptionDiv) {
+                    // Вставляем canvas после описания, но перед preset-buttons
+                    const presetButtons = correctControlGroup.querySelector('.preset-buttons');
+                    if (presetButtons && descriptionDiv.nextSibling !== curveCanvas) {
+                        correctControlGroup.insertBefore(curveCanvas, presetButtons);
+                    } else if (!presetButtons) {
+                        correctControlGroup.insertBefore(curveCanvas, descriptionDiv.nextSibling);
+                    }
+                } else {
+                    // Если нет описания, вставляем после label
+                    const label = correctControlGroup.querySelector('label');
+                    if (label) {
+                        const nextSibling = label.nextSibling;
+                        if (nextSibling !== curveCanvas) {
+                            correctControlGroup.insertBefore(curveCanvas, nextSibling);
+                        }
+                    } else {
+                        correctControlGroup.appendChild(curveCanvas);
+                    }
+                }
+            }
+        }
+        
+        // Исправляем позицию canvas сразу
+        fixCanvasPosition();
+        
+        // Также исправляем при изменении DOM (на случай, если что-то переместит canvas)
+        const observer = new MutationObserver(() => {
+            if (curveCanvas.parentElement && !curveCanvas.parentElement.closest('#controls > div[style*="border-top: 2px solid"]')) {
+                fixCanvasPosition();
+            }
+        });
+        
+        observer.observe(document.getElementById('controls'), {
+            childList: true,
+            subtree: true
+        });
+        
+        const curveCtx = curveCanvas.getContext('2d');
+        
+        // Настраиваем canvas для высокого разрешения (Retina)
+        function setupCanvasResolution() {
+            const rect = curveCanvas.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+            
+            // Устанавливаем внутренние размеры canvas с учетом devicePixelRatio
+            const displayWidth = rect.width;
+            const displayHeight = rect.height;
+            curveCanvas.width = displayWidth * dpr;
+            curveCanvas.height = displayHeight * dpr;
+            
+            // Масштабируем контекст для правильного отображения
+            curveCtx.scale(dpr, dpr);
+        }
+        
+        // Пересчитываем разрешение при изменении размера окна
+        window.addEventListener('resize', () => {
+            setupCanvasResolution();
+            drawCurve();
+        });
+        
+        const padding = 20;
+        let isDragging = false;
+        let draggedPoint = null; // 'p1' или 'p2'
+        
+        // Предустановленные кривые
+        const curvePresets = {
+            linear: { p1x: 0.25, p1y: 0.25, p2x: 0.75, p2y: 0.75 },
+            'ease-in': { p1x: 0.42, p1y: 0, p2x: 1, p2y: 1 },
+            'ease-out': { p1x: 0, p1y: 0, p2x: 0.58, p2y: 1 },
+            'ease-in-out': { p1x: 0.42, p1y: 0, p2x: 0.58, p2y: 1 }
+        };
+        
+        // Функция отрисовки кривой Безье на canvas
+        function drawCurve() {
+            // Получаем актуальные размеры с учетом масштабирования
+            const actualWidth = curveCanvas.width / (window.devicePixelRatio || 1);
+            const actualHeight = curveCanvas.height / (window.devicePixelRatio || 1);
+            const actualDrawWidth = actualWidth - padding * 2;
+            const actualDrawHeight = actualHeight - padding * 2;
+            
+            // Очищаем canvas
+            curveCtx.clearRect(0, 0, actualWidth, actualHeight);
+            
+            // Рисуем фон с сеткой
+            curveCtx.fillStyle = 'rgba(10, 10, 10, 0.5)';
+            curveCtx.fillRect(0, 0, actualWidth, actualHeight);
+            
+            // Рисуем сетку
+            curveCtx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            curveCtx.lineWidth = 1;
+            for (let i = 0; i <= 4; i++) {
+                const x = padding + (actualDrawWidth / 4) * i;
+                const y = padding + (actualDrawHeight / 4) * i;
+                // Вертикальные линии
+                curveCtx.beginPath();
+                curveCtx.moveTo(x, padding);
+                curveCtx.lineTo(x, padding + actualDrawHeight);
+                curveCtx.stroke();
+                // Горизонтальные линии
+                curveCtx.beginPath();
+                curveCtx.moveTo(padding, y);
+                curveCtx.lineTo(padding + actualDrawWidth, y);
+                curveCtx.stroke();
+            }
+            
+            // Преобразуем координаты Безье в координаты canvas
+            const p1x = padding + CONFIG.loadAnimationEasingCurve.p1x * actualDrawWidth;
+            const p1y = padding + actualDrawHeight - CONFIG.loadAnimationEasingCurve.p1y * actualDrawHeight; // Инвертируем Y
+            const p2x = padding + CONFIG.loadAnimationEasingCurve.p2x * actualDrawWidth;
+            const p2y = padding + actualDrawHeight - CONFIG.loadAnimationEasingCurve.p2y * actualDrawHeight; // Инвертируем Y
+            
+            // Рисуем линии к контрольным точкам
+            curveCtx.strokeStyle = 'rgba(100, 150, 255, 0.3)';
+            curveCtx.lineWidth = 1;
+            curveCtx.setLineDash([2, 2]);
+            curveCtx.beginPath();
+            curveCtx.moveTo(padding, padding + actualDrawHeight); // Начальная точка (0,0)
+            curveCtx.lineTo(p1x, p1y);
+            curveCtx.stroke();
+            curveCtx.beginPath();
+            curveCtx.moveTo(padding + actualDrawWidth, padding); // Конечная точка (1,1)
+            curveCtx.lineTo(p2x, p2y);
+            curveCtx.stroke();
+            curveCtx.setLineDash([]);
+            
+            // Рисуем кривую Безье
+            // Для правильной визуализации используем обе координаты контрольных точек
+            curveCtx.strokeStyle = 'rgba(50, 150, 255, 1)';
+            curveCtx.lineWidth = 2;
+            curveCtx.beginPath();
+            
+            // Функция для вычисления точки на кубической кривой Безье
+            function bezierPointXY(t, p0x, p0y, p1x, p1y, p2x, p2y, p3x, p3y) {
+                const oneMinusT = 1 - t;
+                const oneMinusT2 = oneMinusT * oneMinusT;
+                const oneMinusT3 = oneMinusT2 * oneMinusT;
+                const t2 = t * t;
+                const t3 = t2 * t;
+                
+                const x = oneMinusT3 * p0x + 
+                          3 * oneMinusT2 * t * p1x + 
+                          3 * oneMinusT * t2 * p2x + 
+                          t3 * p3x;
+                
+                const y = oneMinusT3 * p0y + 
+                          3 * oneMinusT2 * t * p1y + 
+                          3 * oneMinusT * t2 * p2y + 
+                          t3 * p3y;
+                
+                return { x, y };
+            }
+            
+            const steps = 200; // Увеличиваем количество шагов для более плавной кривой
+            const bezierP0x = 0, bezierP0y = 0;
+            const bezierP1x = CONFIG.loadAnimationEasingCurve.p1x, bezierP1y = CONFIG.loadAnimationEasingCurve.p1y;
+            const bezierP2x = CONFIG.loadAnimationEasingCurve.p2x, bezierP2y = CONFIG.loadAnimationEasingCurve.p2y;
+            const bezierP3x = 1, bezierP3y = 1;
+            
+            let firstPoint = true;
+            for (let i = 0; i <= steps; i++) {
+                const t = i / steps;
+                const point = bezierPointXY(t, bezierP0x, bezierP0y, bezierP1x, bezierP1y, bezierP2x, bezierP2y, bezierP3x, bezierP3y);
+                
+                // Преобразуем координаты Безье (0-1) в координаты canvas
+                const canvasX = padding + point.x * actualDrawWidth;
+                const canvasY = padding + actualDrawHeight - point.y * actualDrawHeight;
+                
+                // Проверяем, что координаты в пределах видимой области
+                if (canvasX >= padding && canvasX <= padding + actualDrawWidth && 
+                    canvasY >= padding && canvasY <= padding + actualDrawHeight) {
+                    if (firstPoint) {
+                        curveCtx.moveTo(canvasX, canvasY);
+                        firstPoint = false;
+                    } else {
+                        curveCtx.lineTo(canvasX, canvasY);
+                    }
+                }
+            }
+            curveCtx.stroke();
+            
+            // Рисуем контрольные точки
+            const pointRadius = 5;
+            const hoverRadius = 8;
+            
+            // Точка P1
+            curveCtx.fillStyle = isDragging && draggedPoint === 'p1' ? 'rgba(50, 200, 255, 1)' : 'rgba(100, 150, 255, 1)';
+            curveCtx.beginPath();
+            curveCtx.arc(p1x, p1y, pointRadius, 0, Math.PI * 2);
+            curveCtx.fill();
+            curveCtx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+            curveCtx.lineWidth = 2;
+            curveCtx.stroke();
+            
+            // Точка P2
+            curveCtx.fillStyle = isDragging && draggedPoint === 'p2' ? 'rgba(50, 200, 255, 1)' : 'rgba(100, 150, 255, 1)';
+            curveCtx.beginPath();
+            curveCtx.arc(p2x, p2y, pointRadius, 0, Math.PI * 2);
+            curveCtx.fill();
+            curveCtx.stroke();
+            
+            // Рисуем начальную и конечную точки
+            curveCtx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+            curveCtx.beginPath();
+            curveCtx.arc(padding, padding + actualDrawHeight, 3, 0, Math.PI * 2);
+            curveCtx.fill();
+            curveCtx.beginPath();
+            curveCtx.arc(padding + actualDrawWidth, padding, 3, 0, Math.PI * 2);
+            curveCtx.fill();
+        }
+        
+        // Функция получения координат точки из координат мыши
+        function getPointFromMouse(event) {
+            const rect = curveCanvas.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+            const canvasX = (event.clientX - rect.left) * dpr;
+            const canvasY = (event.clientY - rect.top) * dpr;
+            
+            // Получаем актуальные размеры с учетом масштабирования
+            const actualWidth = curveCanvas.width / dpr;
+            const actualHeight = curveCanvas.height / dpr;
+            const actualDrawWidth = actualWidth - padding * 2;
+            const actualDrawHeight = actualHeight - padding * 2;
+            
+            // Преобразуем в координаты Безье (0-1)
+            const bezierX = Math.max(0, Math.min(1, (canvasX / dpr - padding) / actualDrawWidth));
+            const bezierY = Math.max(0, Math.min(1, 1 - (canvasY / dpr - padding) / actualDrawHeight)); // Инвертируем Y
+            
+            return { x: bezierX, y: bezierY, canvasX: canvasX / dpr, canvasY: canvasY / dpr };
+        }
+        
+        // Функция проверки, находится ли мышь рядом с контрольной точкой
+        function getPointUnderMouse(event) {
+            const mouse = getPointFromMouse(event);
+            const threshold = 10; // Радиус клика в пикселях
+            
+            // Получаем актуальные размеры с учетом масштабирования
+            const dpr = window.devicePixelRatio || 1;
+            const actualWidth = curveCanvas.width / dpr;
+            const actualHeight = curveCanvas.height / dpr;
+            const actualDrawWidth = actualWidth - padding * 2;
+            const actualDrawHeight = actualHeight - padding * 2;
+            
+            // Проверяем P1
+            const p1x = padding + CONFIG.loadAnimationEasingCurve.p1x * actualDrawWidth;
+            const p1y = padding + actualDrawHeight - CONFIG.loadAnimationEasingCurve.p1y * actualDrawHeight;
+            const dist1 = Math.sqrt((mouse.canvasX - p1x) ** 2 + (mouse.canvasY - p1y) ** 2);
+            
+            // Проверяем P2
+            const p2x = padding + CONFIG.loadAnimationEasingCurve.p2x * actualDrawWidth;
+            const p2y = padding + actualDrawHeight - CONFIG.loadAnimationEasingCurve.p2y * actualDrawHeight;
+            const dist2 = Math.sqrt((mouse.canvasX - p2x) ** 2 + (mouse.canvasY - p2y) ** 2);
+            
+            if (dist1 < threshold) return 'p1';
+            if (dist2 < threshold) return 'p2';
+            
+            return null;
+        }
+        
+        // Обработчики событий для перетаскивания
+        curveCanvas.addEventListener('mousedown', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const point = getPointUnderMouse(event);
+            if (point) {
+                isDragging = true;
+                draggedPoint = point;
+                curveCanvas.style.cursor = 'grabbing';
+            }
+        });
+        
+        curveCanvas.addEventListener('mousemove', (event) => {
+            if (isDragging && draggedPoint) {
+                event.preventDefault();
+                event.stopPropagation();
+                const mouse = getPointFromMouse(event);
+                // Ограничиваем координаты в диапазоне [0, 1]
+                CONFIG.loadAnimationEasingCurve[draggedPoint + 'x'] = Math.max(0, Math.min(1, mouse.x));
+                CONFIG.loadAnimationEasingCurve[draggedPoint + 'y'] = Math.max(0, Math.min(1, mouse.y));
+                drawCurve();
+                saveConfigToStorage();
+            } else {
+                const point = getPointUnderMouse(event);
+                curveCanvas.style.cursor = point ? 'grab' : 'crosshair';
+            }
+        });
+        
+        curveCanvas.addEventListener('mouseup', (event) => {
+            if (isDragging) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+            isDragging = false;
+            draggedPoint = null;
+            curveCanvas.style.cursor = 'crosshair';
+        });
+        
+        curveCanvas.addEventListener('mouseleave', () => {
+            isDragging = false;
+            draggedPoint = null;
+            curveCanvas.style.cursor = 'crosshair';
+        });
+        
+        // Также обрабатываем события на уровне документа для корректной работы при выходе за пределы canvas
+        document.addEventListener('mousemove', (event) => {
+            if (isDragging && draggedPoint) {
+                const rect = curveCanvas.getBoundingClientRect();
+                // Проверяем, что мышь все еще над canvas
+                if (event.clientX >= rect.left && event.clientX <= rect.right &&
+                    event.clientY >= rect.top && event.clientY <= rect.bottom) {
+                    const mouse = getPointFromMouse(event);
+                    CONFIG.loadAnimationEasingCurve[draggedPoint + 'x'] = Math.max(0, Math.min(1, mouse.x));
+                    CONFIG.loadAnimationEasingCurve[draggedPoint + 'y'] = Math.max(0, Math.min(1, mouse.y));
+                    drawCurve();
+                    saveConfigToStorage();
+                }
+            }
+        });
+        
+        document.addEventListener('mouseup', () => {
+            if (isDragging) {
+                isDragging = false;
+                draggedPoint = null;
+                curveCanvas.style.cursor = 'crosshair';
+            }
+        });
+        
+        // Обработчики для кнопок предустановленных кривых
+        document.querySelectorAll('.preset-button').forEach(button => {
+            button.addEventListener('click', () => {
+                const preset = button.dataset.preset;
+                if (curvePresets[preset]) {
+                    CONFIG.loadAnimationEasingCurve = { ...curvePresets[preset] };
+                    drawCurve();
+                    saveConfigToStorage();
+                }
+            });
+        });
+        
+        // Инициализируем отрисовку кривой после полной загрузки DOM
+        // Используем несколько задержек для гарантии, что canvas уже отрендерен и находится в правильном месте
+        function initializeCurveEditor() {
+            fixCanvasPosition();
+            requestAnimationFrame(() => {
+                fixCanvasPosition();
+                setupCanvasResolution();
+                drawCurve();
+            });
+        }
+        
+        // Инициализируем сразу и после загрузки
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeCurveEditor);
+        } else {
+            initializeCurveEditor();
+        }
+        
+        // Также инициализируем после небольшой задержки на случай, если DOM еще не полностью готов
+        setTimeout(initializeCurveEditor, 100);
+        
+        // Функция перезапуска анимации загрузки
+        function restartLoadAnimation() {
+            if (!isInitialized || !geometry || !geometry.attributes.position) {
+                return;
+            }
+            
+            const positionsArray = geometry.attributes.position.array;
+            const actualParticleCount = Math.min(CONFIG.particleCount, positionsArray.length / 3);
+            
+            // Возвращаем частицы на начальные позиции
+            for (let i = 0; i < actualParticleCount; i++) {
+                const i3 = i * 3;
+                if (i3 + 2 >= positionsArray.length) break;
+                
+                positionsArray[i3] = startPositions[i3];
+                positionsArray[i3 + 1] = startPositions[i3 + 1];
+                positionsArray[i3 + 2] = startPositions[i3 + 2];
+            }
+            
+            // Перезапускаем анимацию
+            CONFIG.isLoadingAnimation = true;
+            CONFIG.loadAnimationStartTime = Date.now();
+            
+            geometry.attributes.position.needsUpdate = true;
+        }
+        
+        // Обработчик кнопки "Применить и перезапустить"
+        const restartButton = document.getElementById('restartLoadAnimation');
+        if (restartButton) {
+            restartButton.addEventListener('click', () => {
+                saveConfigToStorage(); // Сохраняем настройки перед перезапуском
+                restartLoadAnimation();
+            });
+        }
         
         // Обработчик для количества точек с debounce для оптимизации
         const particleCountSlider = document.getElementById('particleCount');
