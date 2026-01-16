@@ -207,6 +207,14 @@
         
         <div class="control-group">
             <label>
+                Максимальная разница размера
+                <span class="value" id="sizeVariationValue">20%</span>
+            </label>
+            <input type="range" id="sizeVariation" min="0" max="0.5" step="0.01" value="0.2">
+        </div>
+        
+        <div class="control-group">
+            <label>
                 Количество точек
                 <span class="value" id="particleCountValue">3000</span>
             </label>
@@ -397,6 +405,7 @@
             damping: 0.93, // Коэффициент демпфирования (затухание колебаний, чем ближе к 1, тем сильнее затухание)
             timeScale: 0.80, // Глобальный множитель скорости анимации (0.5 = в 2 раза медленнее)
             pointSize: 6, // Размер точек
+            sizeVariation: 0.2, // Максимальная разница размера точек (20% по умолчанию)
             autonomousMotionStrength: 0.005, // Сила автономного движения точек
             chaosAngle: 45, // Максимальный угол отклонения направления (градусы)
             chaosStrength: 0.8, // Сила хаотичности (0-1)
@@ -499,25 +508,89 @@
         let scrollDirections = new Float32Array(CONFIG.particleCount * 3); // Случайные направления разлёта для каждой частицы
         let velocities = new Float32Array(CONFIG.particleCount * 3);
         let colors = new Float32Array(CONFIG.particleCount * 3); // Цвета для каждой точки (RGB)
+        let sizes = new Float32Array(CONFIG.particleCount); // Индивидуальные размеры каждой точки
         let points = null;
         let svgGeometry = null;
         let cloudCenter = new THREE.Vector3(0, 0, 0); // Центр облака частиц
         
         const circleTexture = createCircleTexture(64);
+        
+        // Функция генерации размеров частиц
+        function generateParticleSizes() {
+            const baseSize = CONFIG.pointSize;
+            const variation = CONFIG.sizeVariation;
+            const minSize = baseSize * (1 - variation);
+            const maxSize = baseSize * (1 + variation);
+            
+            for (let i = 0; i < CONFIG.particleCount; i++) {
+                sizes[i] = minSize + Math.random() * (maxSize - minSize);
+            }
+        }
+        
+        // Генерируем начальные размеры
+        generateParticleSizes();
+        
         // #region agent log
-        fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:307',message:'creating PointsMaterial with blending',data:{texturePremultipliedAlpha:circleTexture.premultipliedAlpha,blendingMode:'AdditiveBlending'},timestamp:Date.now(),sessionId:'debug-session',runId:'blending-fix',hypothesisId:'F'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:307',message:'creating ShaderMaterial with blending',data:{texturePremultipliedAlpha:circleTexture.premultipliedAlpha,blendingMode:'AdditiveBlending'},timestamp:Date.now(),sessionId:'debug-session',runId:'blending-fix',hypothesisId:'F'})}).catch(()=>{});
         // #endregion
-        const material = new THREE.PointsMaterial({
-            color: 0xffffff,
-            size: CONFIG.pointSize,
+        
+        // Вершинный шейдер для точек с поддержкой индивидуальных размеров
+        const vertexShader = `
+            attribute float size;
+            attribute vec3 color;
+            uniform float sizeScale;
+            varying vec3 vColor;
+            
+            void main() {
+                vColor = color;
+                vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                
+                // Для ортографической камеры используем простую формулу
+                // sizeScale уже содержит правильный масштаб для viewport
+                gl_PointSize = size * sizeScale;
+                gl_Position = projectionMatrix * mvPosition;
+            }
+        `;
+        
+        // Фрагментный шейдер для точек с поддержкой текстуры и цветов
+        const fragmentShader = `
+            uniform sampler2D pointTexture;
+            varying vec3 vColor;
+            
+            void main() {
+                vec4 textureColor = texture2D(pointTexture, gl_PointCoord);
+                gl_FragColor = vec4(vColor * textureColor.rgb, textureColor.a);
+            }
+        `;
+        
+        // Вычисляем масштаб размера для ортографической камеры
+        // Для ортографической камеры размер точек должен быть простым
+        // Используем коэффициент, который дает правильный размер
+        const calculateSizeScale = () => {
+            const viewportHeight = window.innerHeight;
+            // Для ортографической камеры используем простой коэффициент
+            // который дает размер примерно равный базовому size в пикселях
+            // Уменьшаем в 2 раза, так как пользователь сказал, что точки в 2 раза крупнее
+            return viewportHeight / 400.0;
+        };
+        
+        const sizeScale = calculateSizeScale();
+        
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                pointTexture: { value: circleTexture },
+                sizeScale: { value: sizeScale }
+            },
+            vertexShader: vertexShader,
+            fragmentShader: fragmentShader,
             transparent: true,
-            opacity: 1.0, // Полная непрозрачность для сплошных точек
-            map: circleTexture,
-            alphaTest: 0.0, // Убираем alphaTest для предотвращения отсечения краёв
-            sizeAttenuation: true,
-            vertexColors: true, // Включаем использование цветов вершин
-            depthWrite: false, // Отключаем depthWrite для правильного смешивания при наложении
-            blending: THREE.AdditiveBlending // Аддитивное смешивание для эффекта слияния точек
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+        });
+        
+        // Обновляем sizeScale при изменении размера окна
+        window.addEventListener('resize', () => {
+            material.uniforms.sizeScale.value = calculateSizeScale();
         });
         // #region agent log
         fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:322',message:'PointsMaterial created with blending',data:{materialTransparent:material.transparent,materialAlphaTest:material.alphaTest,materialDepthWrite:material.depthWrite,materialBlending:material.blending,blendingConstant:THREE.AdditiveBlending},timestamp:Date.now(),sessionId:'debug-session',runId:'blending-fix',hypothesisId:'F'})}).catch(()=>{});
@@ -930,6 +1003,10 @@
             startPositions = new Float32Array(CONFIG.particleCount * 3);
             velocities = new Float32Array(CONFIG.particleCount * 3);
             colors = new Float32Array(CONFIG.particleCount * 3);
+            sizes = new Float32Array(CONFIG.particleCount);
+            
+            // Генерируем размеры частиц
+            generateParticleSizes();
             
             let particlesCreated = 0;
             let posMinX=Infinity,posMaxX=-Infinity,posMinY=Infinity,posMaxY=-Infinity,posMinZ=Infinity,posMaxZ=-Infinity;
@@ -1038,6 +1115,7 @@
             geometry = new THREE.BufferGeometry();
             geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
             geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
             
             points = new THREE.Points(geometry, material);
             scene.add(points);
@@ -1068,6 +1146,7 @@
             geometry = new THREE.BufferGeometry();
             geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
             geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
             
             points = new THREE.Points(geometry, material);
             scene.add(points);
@@ -1083,6 +1162,7 @@
                 geometry = new THREE.BufferGeometry();
                 geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
                 geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+                geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
                 points = new THREE.Points(geometry, material);
                 scene.add(points);
                 isInitialized = true;
@@ -1573,7 +1653,9 @@
                 CONFIG[configKey] = value;
                 
                 // Форматирование значения в зависимости от параметра
-                if (id === 'autonomousMotionStrength' || id === 'springConstant' || id === 'damping') {
+                if (id === 'sizeVariation') {
+                    valueDisplay.textContent = Math.round(value * 100) + '%';
+                } else if (id === 'autonomousMotionStrength' || id === 'springConstant' || id === 'damping') {
                     valueDisplay.textContent = value.toFixed(2);
                 } else if (value < 1) {
                     valueDisplay.textContent = value.toFixed(2);
@@ -1581,13 +1663,22 @@
                     valueDisplay.textContent = value.toFixed(0);
                 }
                 
-                if (id === 'pointSize') {
-                    material.size = value;
+                // Обновляем размеры частиц при изменении pointSize или sizeVariation
+                if (id === 'pointSize' || id === 'sizeVariation') {
+                    // Убеждаемся, что массив sizes имеет правильный размер
+                    if (sizes.length !== CONFIG.particleCount) {
+                        sizes = new Float32Array(CONFIG.particleCount);
+                    }
+                    generateParticleSizes();
+                    if (geometry && geometry.attributes.size) {
+                        geometry.attributes.size.needsUpdate = true;
+                    }
                 }
             });
         }
         
         setupControl('pointSize', 'pointSize', 'pointSizeValue');
+        setupControl('sizeVariation', 'sizeVariation', 'sizeVariationValue');
         setupControl('forceStrength', 'forceStrength', 'forceStrengthValue');
         setupControl('interactionRadius', 'interactionRadius', 'interactionRadiusValue');
         setupControl('springConstant', 'springConstant', 'springConstantValue');
