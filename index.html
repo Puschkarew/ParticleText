@@ -225,6 +225,9 @@
 
         // ========== СОЗДАНИЕ КРУГЛОЙ ТЕКСТУРЫ ==========
         function createCircleTexture(size = 64) {
+            // #region agent log
+            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:227',message:'createCircleTexture entry',data:{size:size},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A'})}).catch(()=>{});
+            // #endregion
             const canvas = document.createElement('canvas');
             canvas.width = size;
             canvas.height = size;
@@ -232,16 +235,33 @@
             
             const center = size / 2;
             
-            // Белый круг с плавным градиентом от центра к краям (убирает чёрную обводку)
-            const gradient = ctx.createRadialGradient(center, center, 0, center, center, center);
-            gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
-            gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-            ctx.fillStyle = gradient;
+            // #region agent log
+            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:234',message:'before drawing circle',data:{center:center,radius:center,canvasSize:size},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'B'})}).catch(()=>{});
+            // #endregion
+            
+            // Очищаем canvas прозрачным цветом (гипотеза A, E)
+            ctx.clearRect(0, 0, size, size);
+            
+            // Сплошной белый круг без градиента
+            ctx.fillStyle = 'rgba(255, 255, 255, 1)';
             ctx.beginPath();
             ctx.arc(center, center, center, 0, Math.PI * 2);
             ctx.fill();
             
+            // #region agent log
+            // Проверяем пиксели в углу canvas (должны быть прозрачными)
+            const cornerImageData = ctx.getImageData(0, 0, 1, 1);
+            const centerImageData = ctx.getImageData(center, center, 1, 1);
+            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:245',message:'after drawing circle',data:{cornerPixel:[cornerImageData.data[0],cornerImageData.data[1],cornerImageData.data[2],cornerImageData.data[3]],centerPixel:[centerImageData.data[0],centerImageData.data[1],centerImageData.data[2],centerImageData.data[3]]},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A'})}).catch(()=>{});
+            // #endregion
+            
             const texture = new THREE.CanvasTexture(canvas);
+            // Устанавливаем premultipliedAlpha в false для правильного смешивания прозрачности
+            // Это предотвращает чёрную обводку при наложении точек
+            texture.premultipliedAlpha = false;
+            // #region agent log
+            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:257',message:'texture created with premultipliedAlpha false',data:{premultipliedAlpha:texture.premultipliedAlpha,format:texture.format,type:texture.type},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'C'})}).catch(()=>{});
+            // #endregion
             return texture;
         }
 
@@ -269,9 +289,14 @@
         camera.position.y = 0;
         camera.position.x = 0;
         
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        // Настраиваем рендерер для правильного смешивания прозрачности
+        renderer.setClearColor(0x000000, 1);
+        // #region agent log
+        fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:297',message:'renderer configured',data:{antialias:true,alpha:true},timestamp:Date.now(),sessionId:'debug-session',runId:'blending-fix',hypothesisId:'F'})}).catch(()=>{});
+        // #endregion
         document.body.appendChild(renderer.domElement);
         
         // ========== ЧАСТИЦЫ ==========
@@ -284,16 +309,24 @@
         let svgGeometry = null;
         
         const circleTexture = createCircleTexture(64);
+        // #region agent log
+        fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:307',message:'creating PointsMaterial with blending',data:{texturePremultipliedAlpha:circleTexture.premultipliedAlpha,blendingMode:'AdditiveBlending'},timestamp:Date.now(),sessionId:'debug-session',runId:'blending-fix',hypothesisId:'F'})}).catch(()=>{});
+        // #endregion
         const material = new THREE.PointsMaterial({
             color: 0xffffff,
             size: CONFIG.pointSize,
             transparent: true,
-            opacity: 0.9,
+            opacity: 1.0, // Полная непрозрачность для сплошных точек
             map: circleTexture,
-            alphaTest: 0.1,
+            alphaTest: 0.0, // Убираем alphaTest для предотвращения отсечения краёв
             sizeAttenuation: true,
-            vertexColors: true // Включаем использование цветов вершин
+            vertexColors: true, // Включаем использование цветов вершин
+            depthWrite: false, // Отключаем depthWrite для правильного смешивания при наложении
+            blending: THREE.AdditiveBlending // Аддитивное смешивание для эффекта слияния точек
         });
+        // #region agent log
+        fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:322',message:'PointsMaterial created with blending',data:{materialTransparent:material.transparent,materialAlphaTest:material.alphaTest,materialDepthWrite:material.depthWrite,materialBlending:material.blending,blendingConstant:THREE.AdditiveBlending},timestamp:Date.now(),sessionId:'debug-session',runId:'blending-fix',hypothesisId:'F'})}).catch(()=>{});
+        // #endregion
         
         console.log('Three.js загружен:', typeof THREE !== 'undefined');
         console.log('SVGLoader загружен:', typeof SVGLoader !== 'undefined');
