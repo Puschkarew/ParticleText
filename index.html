@@ -283,9 +283,9 @@
             <div class="control-group">
                 <label>
                     Длительность анимации (мс)
-                    <span class="value" id="loadAnimationDurationValue">4500</span>
+                    <span class="value" id="loadAnimationDurationValue">5000</span>
                 </label>
-                <input type="range" id="loadAnimationDuration" min="2000" max="8000" step="100" value="4500">
+                <input type="range" id="loadAnimationDuration" min="2000" max="8000" step="100" value="5000">
             </div>
             
             <div class="control-group">
@@ -406,7 +406,7 @@
             scrollDepth: 300, // Глубина скролла (vh) - скрыт в UI
             isLoadingAnimation: true, // Флаг активной анимации загрузки
             loadAnimationStartTime: null, // Время начала анимации
-            loadAnimationDuration: savedConfig?.loadAnimationDuration ?? 4500, // Длительность анимации (4.5 секунды)
+            loadAnimationDuration: savedConfig?.loadAnimationDuration ?? 5000, // Длительность анимации (5 секунд)
             loadAnimationEasingCurve: savedConfig?.loadAnimationEasingCurve ?? { p1x: 0.42, p1y: 0, p2x: 0.58, p2y: 1 } // Кривая Безье для управления скоростью (по умолчанию ease-in-out)
         };
 
