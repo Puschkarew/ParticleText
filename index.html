@@ -216,17 +216,17 @@
         <div class="control-group">
             <label>
                 Количество точек
-                <span class="value" id="particleCountValue">7000</span>
+                <span class="value" id="particleCountValue">8000</span>
             </label>
-            <input type="range" id="particleCount" min="3000" max="10000" step="500" value="7000">
+            <input type="range" id="particleCount" min="3000" max="10000" step="500" value="8000">
         </div>
         
         <div class="control-group">
             <label>
                 Количество точек (вне формы)
-                <span class="value" id="outsideParticleCountValue">800</span>
+                <span class="value" id="outsideParticleCountValue">1950</span>
             </label>
-            <input type="range" id="outsideParticleCount" min="0" max="2000" step="50" value="800">
+            <input type="range" id="outsideParticleCount" min="0" max="2000" step="50" value="1950">
         </div>
         
         <div class="control-group">
@@ -335,33 +335,33 @@
             <div class="control-group">
                 <label>
                     Ширина волны
-                    <span class="value" id="waveWidthValue">4.5</span>
+                    <span class="value" id="waveWidthValue">1.1</span>
                 </label>
-                <input type="range" id="waveWidth" min="1.0" max="10.0" step="0.1" value="4.5">
+                <input type="range" id="waveWidth" min="1.0" max="10.0" step="0.1" value="1.1">
             </div>
             
             <div class="control-group">
                 <label>
                     Скорость волны
-                    <span class="value" id="waveSpeedValue">5.0</span>
+                    <span class="value" id="waveSpeedValue">4.0</span>
                 </label>
-                <input type="range" id="waveSpeed" min="1.0" max="20.0" step="0.5" value="5.0">
+                <input type="range" id="waveSpeed" min="1.0" max="20.0" step="0.5" value="4.0">
             </div>
             
             <div class="control-group">
                 <label>
                     Сила волны
-                    <span class="value" id="waveForceValue">1</span>
+                    <span class="value" id="waveForceValue">2</span>
                 </label>
-                <input type="range" id="waveForce" min="0" max="2" step="0.001" value="1">
+                <input type="range" id="waveForce" min="0" max="2" step="0.001" value="2">
             </div>
             
             <div class="control-group">
                 <label>
                     Сила подсвечивания
-                    <span class="value" id="waveGlowIntensityValue">0.65</span>
+                    <span class="value" id="waveGlowIntensityValue">0.95</span>
                 </label>
-                <input type="range" id="waveGlowIntensity" min="0.0" max="1.0" step="0.05" value="0.65">
+                <input type="range" id="waveGlowIntensity" min="0.0" max="1.0" step="0.05" value="0.95">
             </div>
         </div>
         
@@ -448,8 +448,8 @@
         const savedConfig = loadConfigFromStorage();
         
         let CONFIG = {
-            particleCount: 7000,
-            outsideParticleCount: 800, // Количество частиц вне SVG формы (независимо от particleCount)
+            particleCount: 8000,
+            outsideParticleCount: 1950, // Количество частиц вне SVG формы (независимо от particleCount)
             sphereRadius: 3.0, // Увеличиваем размер текста
             forceStrength: 100.0,
             interactionRadius: 4.0,
@@ -469,14 +469,14 @@
             isLoadingAnimation: true, // Флаг активной анимации загрузки
             loadAnimationStartTime: null, // Время начала анимации
             loadAnimationDuration: savedConfig?.loadAnimationDuration ?? 7000, // Длительность анимации (7 секунд)
-            loadAnimationEasingCurve: savedConfig?.loadAnimationEasingCurve ?? { p1x: 0.42, p1y: 0, p2x: 0.58, p2y: 1 }, // Кривая Безье для управления скоростью (по умолчанию ease-in-out)
+            loadAnimationEasingCurve: savedConfig?.loadAnimationEasingCurve ?? { p1x: 0.2, p1y: 0, p2x: 0.8, p2y: 1 }, // Кривая Безье для управления скоростью (по умолчанию ease-out)
             // Параметры волны
             waveEnabled: true, // Флаг включения/выключения волны
             waveInterval: 4000, // Интервал между волнами (мс)
-            waveSpeed: 5.0, // Скорость распространения волны (единиц в секунду) - быстрое прохождение
-            waveWidth: 4.5, // Ширина волны (расстояние от переднего края до заднего) - толще волна
-            waveForce: 0.001, // Сила воздействия на точки (очень subtle - едва заметное движение)
-            waveGlowIntensity: 0.65, // Интенсивность свечения точек в волне (0-1)
+            waveSpeed: 4.0, // Скорость распространения волны (единиц в секунду) - быстрое прохождение
+            waveWidth: 1.1, // Ширина волны (расстояние от переднего края до заднего) - толще волна
+            waveForce: 0.002, // Сила воздействия на точки (очень subtle - едва заметное движение)
+            waveGlowIntensity: 0.95, // Интенсивность свечения точек в волне (0-1)
             lastWaveTime: null, // Время последней волны
             waves: [] // Массив активных волн: { radius: number, startTime: number, id: number }
         };
@@ -553,6 +553,7 @@
         let velocities = new Float32Array(CONFIG.particleCount * 3);
         let colors = new Float32Array(CONFIG.particleCount * 3); // Цвета для каждой точки (RGB)
         let sizes = new Float32Array(CONFIG.particleCount); // Индивидуальные размеры каждой точки
+        let baseSizes = new Float32Array(CONFIG.particleCount); // Базовые размеры точек (без эффектов волны)
         let points = null;
         let svgGeometry = null;
         let cloudCenter = new THREE.Vector3(0, 0, 0); // Центр облака частиц
@@ -1007,17 +1008,27 @@
             const tempRaycaster = new THREE.Raycaster();
             const volumePoints = getShapeVolumePoints(svgGeometry, CONFIG.particleCount, tempRaycaster);
             
-            positions = new Float32Array(CONFIG.particleCount * 3);
-            originalPositions = new Float32Array(CONFIG.particleCount * 3);
-            baseOriginalPositions = new Float32Array(CONFIG.particleCount * 3); // Пересоздаем базовые исходные позиции
-            startPositions = new Float32Array(CONFIG.particleCount * 3);
-            scrollDirections = new Float32Array(CONFIG.particleCount * 3); // Пересоздаем направления разлёта
-            velocities = new Float32Array(CONFIG.particleCount * 3);
-            colors = new Float32Array(CONFIG.particleCount * 3);
-            sizes = new Float32Array(CONFIG.particleCount);
+            // Создаем временные массивы только для точек внутри SVG
+            // НЕ перезаписываем глобальные массивы, если они уже имеют правильный размер для totalParticleCount
+            const tempPositions = new Float32Array(CONFIG.particleCount * 3);
+            const tempOriginalPositions = new Float32Array(CONFIG.particleCount * 3);
+            const tempBaseOriginalPositions = new Float32Array(CONFIG.particleCount * 3);
+            const tempStartPositions = new Float32Array(CONFIG.particleCount * 3);
+            const tempScrollDirections = new Float32Array(CONFIG.particleCount * 3);
+            const tempVelocities = new Float32Array(CONFIG.particleCount * 3);
+            const tempColors = new Float32Array(CONFIG.particleCount * 3);
+            const tempSizes = new Float32Array(CONFIG.particleCount);
+            const tempBaseSizes = new Float32Array(CONFIG.particleCount);
             
-            // Генерируем размеры частиц
-            generateParticleSizes();
+            // Генерируем размеры частиц для временных массивов
+            const baseSize = CONFIG.pointSize;
+            const variation = CONFIG.sizeVariation;
+            const minSize = baseSize * (1 - variation);
+            const maxSize = baseSize * (1 + variation);
+            for (let i = 0; i < CONFIG.particleCount; i++) {
+                tempSizes[i] = minSize + Math.random() * (maxSize - minSize);
+            }
+            tempBaseSizes.set(tempSizes);
             
             let particlesCreated = 0;
             let posMinX=Infinity,posMaxX=-Infinity,posMinY=Infinity,posMaxY=-Infinity,posMinZ=Infinity,posMaxZ=-Infinity;
@@ -1025,38 +1036,38 @@
                 const i3 = i * 3;
                 const point = volumePoints[i];
                 
-                positions[i3] = point.x;
-                positions[i3 + 1] = point.y;
-                positions[i3 + 2] = point.z;
+                tempPositions[i3] = point.x;
+                tempPositions[i3 + 1] = point.y;
+                tempPositions[i3 + 2] = point.z;
                 
                 posMinX=Math.min(posMinX,point.x);posMaxX=Math.max(posMaxX,point.x);
                 posMinY=Math.min(posMinY,point.y);posMaxY=Math.max(posMaxY,point.y);
                 posMinZ=Math.min(posMinZ,point.z);posMaxZ=Math.max(posMaxZ,point.z);
                 
-                originalPositions[i3] = point.x;
-                originalPositions[i3 + 1] = point.y;
-                originalPositions[i3 + 2] = point.z;
+                tempOriginalPositions[i3] = point.x;
+                tempOriginalPositions[i3 + 1] = point.y;
+                tempOriginalPositions[i3 + 2] = point.z;
                 
                 // Сохраняем базовые исходные позиции
-                baseOriginalPositions[i3] = point.x;
-                baseOriginalPositions[i3 + 1] = point.y;
-                baseOriginalPositions[i3 + 2] = point.z;
+                tempBaseOriginalPositions[i3] = point.x;
+                tempBaseOriginalPositions[i3 + 1] = point.y;
+                tempBaseOriginalPositions[i3 + 2] = point.z;
                 
                 // Генерируем случайное направление разлёта для каждой частицы (один раз при инициализации)
                 const theta = Math.random() * Math.PI * 2; // Азимутальный угол (0 до 2π)
                 const phi = Math.acos(2 * Math.random() - 1); // Полярный угол (равномерное распределение на сфере)
-                scrollDirections[i3] = Math.sin(phi) * Math.cos(theta);
-                scrollDirections[i3 + 1] = Math.sin(phi) * Math.sin(theta);
-                scrollDirections[i3 + 2] = Math.cos(phi);
+                tempScrollDirections[i3] = Math.sin(phi) * Math.cos(theta);
+                tempScrollDirections[i3 + 1] = Math.sin(phi) * Math.sin(theta);
+                tempScrollDirections[i3 + 2] = Math.cos(phi);
                 
-                velocities[i3] = 0;
-                velocities[i3 + 1] = 0;
-                velocities[i3 + 2] = 0;
+                tempVelocities[i3] = 0;
+                tempVelocities[i3 + 1] = 0;
+                tempVelocities[i3 + 2] = 0;
                 
                 // Инициализируем цвета как белые (1, 1, 1)
-                colors[i3] = 1.0;
-                colors[i3 + 1] = 1.0;
-                colors[i3 + 2] = 1.0;
+                tempColors[i3] = 1.0;
+                tempColors[i3 + 1] = 1.0;
+                tempColors[i3 + 2] = 1.0;
                 particlesCreated++;
             }
             
@@ -1064,9 +1075,9 @@
             cloudCenter.set(0, 0, 0);
             for (let i = 0; i < particlesCreated; i++) {
                 const i3 = i * 3;
-                cloudCenter.x += baseOriginalPositions[i3];
-                cloudCenter.y += baseOriginalPositions[i3 + 1];
-                cloudCenter.z += baseOriginalPositions[i3 + 2];
+                cloudCenter.x += tempBaseOriginalPositions[i3];
+                cloudCenter.y += tempBaseOriginalPositions[i3 + 1];
+                cloudCenter.z += tempBaseOriginalPositions[i3 + 2];
             }
             if (particlesCreated > 0) {
                 cloudCenter.divideScalar(particlesCreated);
@@ -1103,14 +1114,14 @@
                     .addScaledVector(direction, distance);
                 
                 // Сохраняем начальную позицию
-                startPositions[i3] = startPos.x;
-                startPositions[i3 + 1] = startPos.y;
-                startPositions[i3 + 2] = startPos.z;
+                tempStartPositions[i3] = startPos.x;
+                tempStartPositions[i3 + 1] = startPos.y;
+                tempStartPositions[i3 + 2] = startPos.z;
                 
                 // Устанавливаем начальную позицию в positions (для анимации загрузки)
-                positions[i3] = startPos.x;
-                positions[i3 + 1] = startPos.y;
-                positions[i3 + 2] = startPos.z;
+                tempPositions[i3] = startPos.x;
+                tempPositions[i3 + 1] = startPos.y;
+                tempPositions[i3 + 2] = startPos.z;
             }
             
             // ========== ГЕНЕРАЦИЯ ТОЧЕК ВОКРУГ SVG ==========
@@ -1170,7 +1181,6 @@
             const outsidePointsCount = filteredOutsidePoints.length;
             totalParticleCount = CONFIG.particleCount + outsidePointsCount;
             
-            
             // ========== ОБЪЕДИНЕНИЕ МАССИВОВ ==========
             // Создаем новые массивы с увеличенным размером
             const newPositions = new Float32Array(totalParticleCount * 3);
@@ -1181,21 +1191,23 @@
             const newVelocities = new Float32Array(totalParticleCount * 3);
             const newColors = new Float32Array(totalParticleCount * 3);
             const newSizes = new Float32Array(totalParticleCount);
+            const newBaseSizes = new Float32Array(totalParticleCount);
             
             
-            // Копируем существующие точки (внутри SVG)
+            // Копируем существующие точки (внутри SVG) из временных массивов
             // Копируем только нужное количество точек (внутри SVG), не больше чем CONFIG.particleCount
-            const pointsToCopy = Math.min(CONFIG.particleCount, positions.length / 3);
+            const pointsToCopy = Math.min(CONFIG.particleCount, tempPositions.length / 3);
             const bytesToCopy = pointsToCopy * 3;
             
-            newPositions.set(positions.subarray(0, bytesToCopy));
-            newOriginalPositions.set(originalPositions.subarray(0, bytesToCopy));
-            newBaseOriginalPositions.set(baseOriginalPositions.subarray(0, bytesToCopy));
-            newStartPositions.set(startPositions.subarray(0, bytesToCopy));
-            newScrollDirections.set(scrollDirections.subarray(0, bytesToCopy));
-            newVelocities.set(velocities.subarray(0, bytesToCopy));
-            newColors.set(colors.subarray(0, bytesToCopy));
-            newSizes.set(sizes.subarray(0, pointsToCopy));
+            newPositions.set(tempPositions.subarray(0, bytesToCopy));
+            newOriginalPositions.set(tempOriginalPositions.subarray(0, bytesToCopy));
+            newBaseOriginalPositions.set(tempBaseOriginalPositions.subarray(0, bytesToCopy));
+            newStartPositions.set(tempStartPositions.subarray(0, bytesToCopy));
+            newScrollDirections.set(tempScrollDirections.subarray(0, bytesToCopy));
+            newVelocities.set(tempVelocities.subarray(0, bytesToCopy));
+            newColors.set(tempColors.subarray(0, bytesToCopy));
+            newSizes.set(tempSizes.subarray(0, pointsToCopy));
+            newBaseSizes.set(tempBaseSizes.subarray(0, pointsToCopy));
             
             // Добавляем точки вокруг SVG
             const baseIndex = CONFIG.particleCount;
@@ -1262,7 +1274,9 @@
                 const variation = CONFIG.sizeVariation;
                 const minSize = baseSize * (1 - variation);
                 const maxSize = baseSize * (1 + variation);
-                newSizes[baseIndex + i] = minSize + Math.random() * (maxSize - minSize);
+                const generatedSize = minSize + Math.random() * (maxSize - minSize);
+                newSizes[baseIndex + i] = generatedSize;
+                newBaseSizes[baseIndex + i] = generatedSize; // Сохраняем базовый размер
                 
                 // Инициализируем цвета как белые
                 newColors[i3] = 1.0;
@@ -1280,6 +1294,7 @@
             velocities = newVelocities;
             colors = newColors;
             sizes = newSizes;
+            baseSizes = newBaseSizes;
             
             
             // Очищаем временный mesh
@@ -1288,9 +1303,52 @@
         
         // Функция пересоздания системы точек
         async function recreateParticles() {
+            
+            // Сохраняем старые массивы для точек внутри SVG перед пересозданием
+            // Это нужно, чтобы сохранить позиции точек внутри формы при изменении количества точек вне формы
+            const oldPositions = positions ? positions.slice(0, Math.min(CONFIG.particleCount * 3, positions.length)) : null;
+            const oldOriginalPositions = originalPositions ? originalPositions.slice(0, Math.min(CONFIG.particleCount * 3, originalPositions.length)) : null;
+            const oldBaseOriginalPositions = baseOriginalPositions ? baseOriginalPositions.slice(0, Math.min(CONFIG.particleCount * 3, baseOriginalPositions.length)) : null;
+            const oldStartPositions = startPositions ? startPositions.slice(0, Math.min(CONFIG.particleCount * 3, startPositions.length)) : null;
+            const oldScrollDirections = scrollDirections ? scrollDirections.slice(0, Math.min(CONFIG.particleCount * 3, scrollDirections.length)) : null;
+            const oldVelocities = velocities ? velocities.slice(0, Math.min(CONFIG.particleCount * 3, velocities.length)) : null;
+            const oldColors = colors ? colors.slice(0, Math.min(CONFIG.particleCount * 3, colors.length)) : null;
+            const oldSizes = sizes ? sizes.slice(0, Math.min(CONFIG.particleCount, sizes.length)) : null;
+            const oldBaseSizes = baseSizes ? baseSizes.slice(0, Math.min(CONFIG.particleCount, baseSizes.length)) : null;
+            
             await generateParticlesFromSVG();
             
-            
+            // Восстанавливаем только originalPositions и baseOriginalPositions из сохраненных старых массивов
+            // Это нужно, чтобы сохранить целевые позиции точек внутри формы при изменении количества точек вне формы
+            // НЕ восстанавливаем positions и startPositions - они должны остаться для анимации появления
+            if (oldOriginalPositions && originalPositions) {
+                const pointsToRestore = Math.min(CONFIG.particleCount, oldOriginalPositions.length / 3, originalPositions.length / 3);
+                const bytesToRestore = pointsToRestore * 3;
+                
+                // Восстанавливаем только целевые позиции (originalPositions) из старых массивов
+                // Это сохранит позиции точек внутри формы, но позволит анимации появления работать
+                originalPositions.set(oldOriginalPositions.subarray(0, bytesToRestore), 0);
+                if (oldBaseOriginalPositions && baseOriginalPositions) {
+                    baseOriginalPositions.set(oldBaseOriginalPositions.subarray(0, bytesToRestore), 0);
+                }
+                
+                // Восстанавливаем другие свойства, но НЕ positions и startPositions
+                if (oldScrollDirections && scrollDirections) {
+                    scrollDirections.set(oldScrollDirections.subarray(0, bytesToRestore), 0);
+                }
+                if (oldVelocities && velocities) {
+                    velocities.set(oldVelocities.subarray(0, bytesToRestore), 0);
+                }
+                if (oldColors && colors) {
+                    colors.set(oldColors.subarray(0, bytesToRestore), 0);
+                }
+                if (oldSizes && sizes) {
+                    sizes.set(oldSizes.subarray(0, pointsToRestore), 0);
+                }
+                if (oldBaseSizes && baseSizes) {
+                    baseSizes.set(oldBaseSizes.subarray(0, pointsToRestore), 0);
+                }
+            }
             
             // Сохраняем старый объект points для удаления
             const oldPoints = points;
@@ -1315,7 +1373,6 @@
             
             // Убеждаемся, что геометрия знает о количестве вершин
             geometry.setDrawRange(0, totalParticleCount);
-            
             
             // Создаем новый объект Points с нуля
             points = new THREE.Points(geometry, material);
@@ -1733,7 +1790,21 @@
             
             // Проверяем, что массив имеет правильный размер
             // Используем totalParticleCount для обработки всех точек (внутри + снаружи SVG)
-            const actualParticleCount = Math.min(totalParticleCount, positionsArray.length / 3);
+            // ВАЖНО: Ограничиваем actualParticleCount размером самых маленьких массивов, чтобы избежать выхода за границы
+            const positionsCount = positionsArray.length / 3;
+            const originalCount = originalPositions ? originalPositions.length / 3 : 0;
+            const startCount = startPositions ? startPositions.length / 3 : 0;
+            const velocitiesCount = velocities ? velocities.length / 3 : 0;
+            const colorsCount = colors ? colors.length / 3 : 0;
+            // Используем минимальный размер из всех массивов, чтобы гарантировать безопасный доступ
+            const actualParticleCount = Math.min(
+                totalParticleCount,
+                positionsCount,
+                originalCount,
+                startCount,
+                velocitiesCount,
+                colorsCount
+            );
             
             // Определяем диапазон расстояний для нормализации
             let minDistance = Infinity;
@@ -1837,6 +1908,7 @@
                 }
                 
                 // ========== ВОЗДЕЙСТВИЕ ВОЛНЫ ==========
+                let totalWaveSizeFactor = 0; // Множитель размера от волн (накапливаем forceFactor)
                 if (CONFIG.waveEnabled && CONFIG.waves.length > 0) {
                     // Вычисляем расстояние от центра волны до частицы
                     const waveDistance = Math.sqrt(
@@ -1881,6 +1953,9 @@
                             totalWaveForceX += directionToParticle.x * waveForce;
                             totalWaveForceY += directionToParticle.y * waveForce;
                             totalWaveForceZ += directionToParticle.z * waveForce;
+                            
+                            // Накапливаем forceFactor для эффекта размера (та же интенсивность, что и для силы/свечения)
+                            totalWaveSizeFactor += forceFactor;
                         }
                     }
                     
@@ -1888,6 +1963,15 @@
                     velocities[i3] += totalWaveForceX;
                     velocities[i3 + 1] += totalWaveForceY;
                     velocities[i3 + 2] += totalWaveForceZ;
+                }
+                
+                // Обновляем размер точки на основе эффекта волны
+                if (i < baseSizes.length) {
+                    const baseSize = baseSizes[i];
+                    // Применяем эффект увеличения размера (та же интенсивность, что и у силы/свечения)
+                    // Используем totalWaveSizeFactor для увеличения размера до 150% (1.0 + 0.5 * factor)
+                    const sizeMultiplier = 1.0 + totalWaveSizeFactor * 0.5;
+                    sizes[i] = baseSize * sizeMultiplier;
                 }
                 
                 positionsArray[i3] += velocities[i3] * CONFIG.timeScale;
@@ -1901,6 +1985,11 @@
                 );
                 
                 // Система пружины-демпфера для возврата к исходной позиции
+                // Проверяем границы перед доступом к массивам
+                if (i3 + 2 >= originalPositions.length || i3 + 2 >= velocities.length) {
+                    // Пропускаем эту точку, если массивы не готовы
+                    continue;
+                }
                 tempVector3.set(
                     originalPositions[i3],
                     originalPositions[i3 + 1],
@@ -1999,15 +2088,24 @@
                     
                     const clampedBrightness = Math.max(0.0, Math.min(1.0, brightness));
                     
-                    colorsArray[i3] = clampedBrightness;
-                    colorsArray[i3 + 1] = clampedBrightness;
-                    colorsArray[i3 + 2] = clampedBrightness;
+                    // Затемняем точки вне SVG формы
+                    let finalBrightness = clampedBrightness;
+                    if (i >= CONFIG.particleCount) {
+                        finalBrightness *= 0.5; // Сделать бледнее (50% яркости)
+                    }
+                    
+                    colorsArray[i3] = finalBrightness;
+                    colorsArray[i3 + 1] = finalBrightness;
+                    colorsArray[i3 + 2] = finalBrightness;
                 }
             }
             
             geometry.attributes.position.needsUpdate = true;
             if (geometry.attributes.color) {
                 geometry.attributes.color.needsUpdate = true;
+            }
+            if (geometry.attributes.size) {
+                geometry.attributes.size.needsUpdate = true;
             }
         }
         
@@ -2068,6 +2166,10 @@
                         sizes = new Float32Array(totalParticleCount);
                     }
                     generateParticleSizes();
+                    // Обновляем базовые размеры
+                    if (baseSizes.length === sizes.length) {
+                        baseSizes.set(sizes);
+                    }
                     if (geometry && geometry.attributes.size) {
                         geometry.attributes.size.needsUpdate = true;
                     }
