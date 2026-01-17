@@ -200,25 +200,33 @@
         <div class="control-group">
             <label>
                 Размер точек
-                <span class="value" id="pointSizeValue">6</span>
+                <span class="value" id="pointSizeValue">2</span>
             </label>
-            <input type="range" id="pointSize" min="1" max="10" step="0.1" value="6">
+            <input type="range" id="pointSize" min="1" max="10" step="0.1" value="2">
         </div>
         
         <div class="control-group">
             <label>
                 Максимальная разница размера
-                <span class="value" id="sizeVariationValue">20%</span>
+                <span class="value" id="sizeVariationValue">50%</span>
             </label>
-            <input type="range" id="sizeVariation" min="0" max="0.5" step="0.01" value="0.2">
+            <input type="range" id="sizeVariation" min="0" max="0.5" step="0.01" value="0.5">
         </div>
         
         <div class="control-group">
             <label>
                 Количество точек
-                <span class="value" id="particleCountValue">3000</span>
+                <span class="value" id="particleCountValue">7000</span>
             </label>
-            <input type="range" id="particleCount" min="3000" max="10000" step="500" value="3000">
+            <input type="range" id="particleCount" min="3000" max="10000" step="500" value="7000">
+        </div>
+        
+        <div class="control-group">
+            <label>
+                Количество точек (вне формы)
+                <span class="value" id="outsideParticleCountValue">800</span>
+            </label>
+            <input type="range" id="outsideParticleCount" min="0" max="2000" step="50" value="800">
         </div>
         
         <div class="control-group">
@@ -291,9 +299,9 @@
             <div class="control-group">
                 <label>
                     Длительность анимации (мс)
-                    <span class="value" id="loadAnimationDurationValue">5000</span>
+                    <span class="value" id="loadAnimationDurationValue">7000</span>
                 </label>
-                <input type="range" id="loadAnimationDuration" min="2000" max="8000" step="100" value="5000">
+                <input type="range" id="loadAnimationDuration" min="2000" max="8000" step="100" value="7000">
             </div>
             
             <div class="control-group">
@@ -311,6 +319,50 @@
             </div>
             
             <button id="restartLoadAnimation" class="apply-button">Применить и перезапустить</button>
+        </div>
+        
+        <div style="margin-top: 20px; padding-top: 20px; border-top: 2px solid rgba(255,255,255,0.2);">
+            <h3 style="margin-bottom: 15px; font-size: 16px; font-weight: 600;">Настройки волн</h3>
+            
+            <div class="control-group">
+                <label>
+                    Частота волн (мс)
+                    <span class="value" id="waveIntervalValue">4000</span>
+                </label>
+                <input type="range" id="waveInterval" min="200" max="5000" step="100" value="4000">
+            </div>
+            
+            <div class="control-group">
+                <label>
+                    Ширина волны
+                    <span class="value" id="waveWidthValue">4.5</span>
+                </label>
+                <input type="range" id="waveWidth" min="1.0" max="10.0" step="0.1" value="4.5">
+            </div>
+            
+            <div class="control-group">
+                <label>
+                    Скорость волны
+                    <span class="value" id="waveSpeedValue">5.0</span>
+                </label>
+                <input type="range" id="waveSpeed" min="1.0" max="20.0" step="0.5" value="5.0">
+            </div>
+            
+            <div class="control-group">
+                <label>
+                    Сила волны
+                    <span class="value" id="waveForceValue">1</span>
+                </label>
+                <input type="range" id="waveForce" min="0" max="2" step="0.001" value="1">
+            </div>
+            
+            <div class="control-group">
+                <label>
+                    Сила подсвечивания
+                    <span class="value" id="waveGlowIntensityValue">0.65</span>
+                </label>
+                <input type="range" id="waveGlowIntensity" min="0.0" max="1.0" step="0.05" value="0.65">
+            </div>
         </div>
         
         <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1); font-size: 10px; color: #666;">
@@ -396,7 +448,8 @@
         const savedConfig = loadConfigFromStorage();
         
         let CONFIG = {
-            particleCount: 3000,
+            particleCount: 7000,
+            outsideParticleCount: 800, // Количество частиц вне SVG формы (независимо от particleCount)
             sphereRadius: 3.0, // Увеличиваем размер текста
             forceStrength: 100.0,
             interactionRadius: 4.0,
@@ -404,8 +457,8 @@
             springConstant: 0.15, // Жёсткость пружины (сила возврата)
             damping: 0.93, // Коэффициент демпфирования (затухание колебаний, чем ближе к 1, тем сильнее затухание)
             timeScale: 0.80, // Глобальный множитель скорости анимации (0.5 = в 2 раза медленнее)
-            pointSize: 6, // Размер точек
-            sizeVariation: 0.2, // Максимальная разница размера точек (20% по умолчанию)
+            pointSize: 2, // Размер точек
+            sizeVariation: 0.5, // Максимальная разница размера точек (50% по умолчанию)
             autonomousMotionStrength: 0.005, // Сила автономного движения точек
             chaosAngle: 45, // Максимальный угол отклонения направления (градусы)
             chaosStrength: 0.8, // Сила хаотичности (0-1)
@@ -415,8 +468,17 @@
             scrollDepth: 300, // Глубина скролла (vh) - скрыт в UI
             isLoadingAnimation: true, // Флаг активной анимации загрузки
             loadAnimationStartTime: null, // Время начала анимации
-            loadAnimationDuration: savedConfig?.loadAnimationDuration ?? 5000, // Длительность анимации (5 секунд)
-            loadAnimationEasingCurve: savedConfig?.loadAnimationEasingCurve ?? { p1x: 0.42, p1y: 0, p2x: 0.58, p2y: 1 } // Кривая Безье для управления скоростью (по умолчанию ease-in-out)
+            loadAnimationDuration: savedConfig?.loadAnimationDuration ?? 7000, // Длительность анимации (7 секунд)
+            loadAnimationEasingCurve: savedConfig?.loadAnimationEasingCurve ?? { p1x: 0.42, p1y: 0, p2x: 0.58, p2y: 1 }, // Кривая Безье для управления скоростью (по умолчанию ease-in-out)
+            // Параметры волны
+            waveEnabled: true, // Флаг включения/выключения волны
+            waveInterval: 4000, // Интервал между волнами (мс)
+            waveSpeed: 5.0, // Скорость распространения волны (единиц в секунду) - быстрое прохождение
+            waveWidth: 4.5, // Ширина волны (расстояние от переднего края до заднего) - толще волна
+            waveForce: 0.001, // Сила воздействия на точки (очень subtle - едва заметное движение)
+            waveGlowIntensity: 0.65, // Интенсивность свечения точек в волне (0-1)
+            lastWaveTime: null, // Время последней волны
+            waves: [] // Массив активных волн: { radius: number, startTime: number, id: number }
         };
 
         // ========== НАСТРОЙКА SVG ==========
@@ -425,9 +487,6 @@
 
         // ========== СОЗДАНИЕ КРУГЛОЙ ТЕКСТУРЫ ==========
         function createCircleTexture(size = 64) {
-            // #region agent log
-            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:227',message:'createCircleTexture entry',data:{size:size},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A'})}).catch(()=>{});
-            // #endregion
             const canvas = document.createElement('canvas');
             canvas.width = size;
             canvas.height = size;
@@ -435,9 +494,6 @@
             
             const center = size / 2;
             
-            // #region agent log
-            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:234',message:'before drawing circle',data:{center:center,radius:center,canvasSize:size},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'B'})}).catch(()=>{});
-            // #endregion
             
             // Очищаем canvas прозрачным цветом (гипотеза A, E)
             ctx.clearRect(0, 0, size, size);
@@ -448,20 +504,11 @@
             ctx.arc(center, center, center, 0, Math.PI * 2);
             ctx.fill();
             
-            // #region agent log
-            // Проверяем пиксели в углу canvas (должны быть прозрачными)
-            const cornerImageData = ctx.getImageData(0, 0, 1, 1);
-            const centerImageData = ctx.getImageData(center, center, 1, 1);
-            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:245',message:'after drawing circle',data:{cornerPixel:[cornerImageData.data[0],cornerImageData.data[1],cornerImageData.data[2],cornerImageData.data[3]],centerPixel:[centerImageData.data[0],centerImageData.data[1],centerImageData.data[2],centerImageData.data[3]]},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A'})}).catch(()=>{});
-            // #endregion
             
             const texture = new THREE.CanvasTexture(canvas);
             // Устанавливаем premultipliedAlpha в false для правильного смешивания прозрачности
             // Это предотвращает чёрную обводку при наложении точек
             texture.premultipliedAlpha = false;
-            // #region agent log
-            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:257',message:'texture created with premultipliedAlpha false',data:{premultipliedAlpha:texture.premultipliedAlpha,format:texture.format,type:texture.type},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'C'})}).catch(()=>{});
-            // #endregion
             return texture;
         }
 
@@ -494,9 +541,6 @@
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         // Настраиваем рендерер для правильного смешивания прозрачности
         renderer.setClearColor(0x000000, 1);
-        // #region agent log
-        fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:297',message:'renderer configured',data:{antialias:true,alpha:true},timestamp:Date.now(),sessionId:'debug-session',runId:'blending-fix',hypothesisId:'F'})}).catch(()=>{});
-        // #endregion
         document.body.appendChild(renderer.domElement);
         
         // ========== ЧАСТИЦЫ ==========
@@ -512,6 +556,7 @@
         let points = null;
         let svgGeometry = null;
         let cloudCenter = new THREE.Vector3(0, 0, 0); // Центр облака частиц
+        let totalParticleCount = CONFIG.particleCount; // Общее количество точек (внутри + снаружи SVG)
         
         const circleTexture = createCircleTexture(64);
         
@@ -522,7 +567,12 @@
             const minSize = baseSize * (1 - variation);
             const maxSize = baseSize * (1 + variation);
             
-            for (let i = 0; i < CONFIG.particleCount; i++) {
+            // Убеждаемся, что массив sizes имеет правильный размер
+            if (sizes.length !== totalParticleCount) {
+                sizes = new Float32Array(totalParticleCount);
+            }
+            
+            for (let i = 0; i < totalParticleCount; i++) {
                 sizes[i] = minSize + Math.random() * (maxSize - minSize);
             }
         }
@@ -530,9 +580,6 @@
         // Генерируем начальные размеры
         generateParticleSizes();
         
-        // #region agent log
-        fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:307',message:'creating ShaderMaterial with blending',data:{texturePremultipliedAlpha:circleTexture.premultipliedAlpha,blendingMode:'AdditiveBlending'},timestamp:Date.now(),sessionId:'debug-session',runId:'blending-fix',hypothesisId:'F'})}).catch(()=>{});
-        // #endregion
         
         // Вершинный шейдер для точек с поддержкой индивидуальных размеров
         const vertexShader = `
@@ -592,9 +639,6 @@
         window.addEventListener('resize', () => {
             material.uniforms.sizeScale.value = calculateSizeScale();
         });
-        // #region agent log
-        fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:322',message:'PointsMaterial created with blending',data:{materialTransparent:material.transparent,materialAlphaTest:material.alphaTest,materialDepthWrite:material.depthWrite,materialBlending:material.blending,blendingConstant:THREE.AdditiveBlending},timestamp:Date.now(),sessionId:'debug-session',runId:'blending-fix',hypothesisId:'F'})}).catch(()=>{});
-        // #endregion
         
         console.log('Three.js загружен:', typeof THREE !== 'undefined');
         console.log('SVGLoader загружен:', typeof SVGLoader !== 'undefined');
@@ -603,17 +647,6 @@
         // Использует меньше направлений для ускорения, но сохраняет точность
         function isPointInsideMesh(point, mesh, raycaster) {
             try {
-                // #region agent log
-                if (typeof window !== 'undefined' && !window._isPointInsideMeshCallCount) {
-                    window._isPointInsideMeshCallCount = 0;
-                }
-                if (typeof window !== 'undefined') {
-                    window._isPointInsideMeshCallCount++;
-                    if (window._isPointInsideMeshCallCount % 100 === 0) {
-                        fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:278',message:'isPointInsideMesh call count',data:{callCount:window._isPointInsideMeshCallCount},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'B'})}).catch(()=>{});
-                    }
-                }
-                // #endregion
                 // Используем только 3 направления для ускорения (вместо 6)
                 // Это достаточно для определения, находится ли точка внутри объёма
                 const directions = [
@@ -641,9 +674,6 @@
                 const threshold = Math.ceil(totalChecks * 0.6); // Минимум 2 из 3
                 return insideCount >= threshold;
             } catch (error) {
-                // #region agent log
-                fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:310',message:'isPointInsideMesh error',data:{error:error.message},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'D'})}).catch(()=>{});
-                // #endregion
                 console.error('Ошибка в isPointInsideMesh:', error);
                 return false;
             }
@@ -652,9 +682,6 @@
         // Функция для получения точек для закрашивания SVG формы (2D плоскость)
         // Генерирует точки на поверхности SVG для их закрашивания
         function getShapeVolumePoints(shapeGeometry, count, raycaster) {
-            // #region agent log
-            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:326',message:'getShapeVolumePoints entry',data:{count:count},timestamp:Date.now(),sessionId:'debug-session',runId:'hybrid-approach',hypothesisId:'G'})}).catch(()=>{});
-            // #endregion
             const points = [];
             const positions = shapeGeometry.attributes.position;
             const indices = shapeGeometry.index;
@@ -770,9 +797,6 @@
             // Генерируем точки на поверхности букв (2D плоскость)
             const surfacePoints = [];
             
-            // #region agent log
-            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:395',message:'generating 2D surface points',data:{triangleCount:triangles.length,frontFacingCount:trianglesToUse.length,needed:count},timestamp:Date.now(),sessionId:'debug-session',runId:'2d-approach',hypothesisId:'G'})}).catch(()=>{});
-            // #endregion
             
             // Генерируем точки на поверхности треугольников
             for (let i = 0; i < count; i++) {
@@ -808,20 +832,11 @@
                 surfacePoints.push(surfacePoint);
             }
             
-            // #region agent log
-            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:425',message:'point generation completed',data:{generated:surfacePoints.length,needed:count},timestamp:Date.now(),sessionId:'debug-session',runId:'2d-approach',hypothesisId:'G'})}).catch(()=>{});
-            // #endregion
             
-            // #region agent log
-            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:420',message:'2D surface points generated',data:{generated:surfacePoints.length,needed:count,triangles:triangles.length},timestamp:Date.now(),sessionId:'debug-session',runId:'2d-approach',hypothesisId:'G'})}).catch(()=>{});
-            // #endregion
             
             // Если точек недостаточно, дублируем существующие
             if (surfacePoints.length === 0) {
                 console.error('Не удалось сгенерировать точки! triangles:', triangles.length, 'vertices:', vertices.length);
-                // #region agent log
-                fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:450',message:'ERROR: no points generated',data:{triangles:triangles.length,vertices:vertices.length},timestamp:Date.now(),sessionId:'debug-session',runId:'2d-approach',hypothesisId:'G'})}).catch(()=>{});
-                // #endregion
             } else if (surfacePoints.length < count) {
                 // Если точек меньше нужного, дублируем существующие
                 const needed = count - surfacePoints.length;
@@ -829,17 +844,11 @@
                     const index = i % surfacePoints.length;
                     surfacePoints.push(surfacePoints[index].clone());
                 }
-                // #region agent log
-                fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:455',message:'duplicated points to reach count',data:{original:surfacePoints.length-needed,duplicated:needed,final:surfacePoints.length},timestamp:Date.now(),sessionId:'debug-session',runId:'2d-approach',hypothesisId:'G'})}).catch(()=>{});
-                // #endregion
             }
             
             // Возвращаем сгенерированные точки
             return surfacePoints.map(p => p.clone());
             
-            // #region agent log
-            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:453',message:'getShapeVolumePoints exit',data:{returnedCount:points.length},timestamp:Date.now(),sessionId:'debug-session',runId:'hybrid-approach',hypothesisId:'G'})}).catch(()=>{});
-            // #endregion
             return points;
         }
         
@@ -1006,18 +1015,12 @@
             velocities = new Float32Array(CONFIG.particleCount * 3);
             colors = new Float32Array(CONFIG.particleCount * 3);
             sizes = new Float32Array(CONFIG.particleCount);
-            // #region agent log
-            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:1006',message:'arrays recreated',data:{particleCount:CONFIG.particleCount,positionsLength:positions.length,baseOriginalPositionsLength:baseOriginalPositions.length,scrollDirectionsLength:scrollDirections.length},timestamp:Date.now(),sessionId:'debug-session',runId:'verification',hypothesisId:'A'})}).catch(()=>{});
-            // #endregion
             
             // Генерируем размеры частиц
             generateParticleSizes();
             
             let particlesCreated = 0;
             let posMinX=Infinity,posMaxX=-Infinity,posMinY=Infinity,posMaxY=-Infinity,posMinZ=Infinity,posMaxZ=-Infinity;
-            // #region agent log
-            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:1013',message:'before particle loop',data:{particleCount:CONFIG.particleCount,volumePointsLength:volumePoints.length,baseOriginalPositionsLength:baseOriginalPositions.length,scrollDirectionsLength:scrollDirections.length},timestamp:Date.now(),sessionId:'debug-session',runId:'verification',hypothesisId:'A'})}).catch(()=>{});
-            // #endregion
             for (let i = 0; i < CONFIG.particleCount && i < volumePoints.length; i++) {
                 const i3 = i * 3;
                 const point = volumePoints[i];
@@ -1035,11 +1038,6 @@
                 originalPositions[i3 + 2] = point.z;
                 
                 // Сохраняем базовые исходные позиции
-                // #region agent log
-                if (i3 + 2 >= baseOriginalPositions.length) {
-                    fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:1030',message:'ERROR: baseOriginalPositions out of bounds',data:{i:i,i3:i3,baseOriginalPositionsLength:baseOriginalPositions.length,particleCount:CONFIG.particleCount},timestamp:Date.now(),sessionId:'debug-session',runId:'verification',hypothesisId:'A'})}).catch(()=>{});
-                }
-                // #endregion
                 baseOriginalPositions[i3] = point.x;
                 baseOriginalPositions[i3 + 1] = point.y;
                 baseOriginalPositions[i3 + 2] = point.z;
@@ -1047,11 +1045,6 @@
                 // Генерируем случайное направление разлёта для каждой частицы (один раз при инициализации)
                 const theta = Math.random() * Math.PI * 2; // Азимутальный угол (0 до 2π)
                 const phi = Math.acos(2 * Math.random() - 1); // Полярный угол (равномерное распределение на сфере)
-                // #region agent log
-                if (i3 + 2 >= scrollDirections.length) {
-                    fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:1037',message:'ERROR: scrollDirections out of bounds',data:{i:i,i3:i3,scrollDirectionsLength:scrollDirections.length,particleCount:CONFIG.particleCount},timestamp:Date.now(),sessionId:'debug-session',runId:'verification',hypothesisId:'A'})}).catch(()=>{});
-                }
-                // #endregion
                 scrollDirections[i3] = Math.sin(phi) * Math.cos(theta);
                 scrollDirections[i3 + 1] = Math.sin(phi) * Math.sin(theta);
                 scrollDirections[i3 + 2] = Math.cos(phi);
@@ -1066,9 +1059,6 @@
                 colors[i3 + 2] = 1.0;
                 particlesCreated++;
             }
-            // #region agent log
-            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:1067',message:'particle loop completed',data:{particlesCreated:particlesCreated,particleCount:CONFIG.particleCount,volumePointsLength:volumePoints.length},timestamp:Date.now(),sessionId:'debug-session',runId:'verification',hypothesisId:'B'})}).catch(()=>{});
-            // #endregion
             
             // Вычисляем центр облака частиц
             cloudCenter.set(0, 0, 0);
@@ -1122,33 +1112,253 @@
                 positions[i3 + 1] = startPos.y;
                 positions[i3 + 2] = startPos.z;
             }
+            
+            // ========== ГЕНЕРАЦИЯ ТОЧЕК ВОКРУГ SVG ==========
+            // Создаем временный mesh для проверки точек внутри SVG
+            const tempMaterial = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
+            const svgMesh = new THREE.Mesh(svgGeometry, tempMaterial);
+            
+            // Генерируем точки вокруг SVG
+            // Генерируем кандидатов в 10 раз больше, чем нужно, чтобы после фильтрации получить нужное количество
+            const targetOutsideCount = CONFIG.outsideParticleCount;
+            const candidateCount = targetOutsideCount * 10; // Генерируем в 10 раз больше для фильтрации
+            
+            const viewportBounds = {
+                left: camera.left,
+                right: camera.right,
+                top: camera.top,
+                bottom: camera.bottom
+            };
+            
+            const outsidePoints = [];
+            const checkRaycaster = new THREE.Raycaster();
+            
+            // Генерируем точки по всему viewport
+            for (let i = 0; i < candidateCount; i++) {
+                const x = viewportBounds.left + Math.random() * (viewportBounds.right - viewportBounds.left);
+                const y = viewportBounds.bottom + Math.random() * (viewportBounds.top - viewportBounds.bottom);
+                const z = 0; // На той же плоскости, что и SVG
+                
+                const point = new THREE.Vector3(x, y, z);
+                
+                // Проверяем, что точка НЕ внутри SVG
+                if (!isPointInsideMesh(point, svgMesh, checkRaycaster)) {
+                    outsidePoints.push(point);
+                }
+            }
+            
+            // Оставляем каждую 10-ю точку для получения нужной плотности
+            const filteredOutsidePoints = [];
+            for (let i = 0; i < outsidePoints.length; i += 10) {
+                if (filteredOutsidePoints.length >= targetOutsideCount) break;
+                filteredOutsidePoints.push(outsidePoints[i]);
+            }
+            
+            // Если не набрали достаточно точек, добавляем оставшиеся
+            if (filteredOutsidePoints.length < targetOutsideCount && outsidePoints.length > 0) {
+                const remaining = targetOutsideCount - filteredOutsidePoints.length;
+                for (let i = 0; i < remaining && i < outsidePoints.length; i++) {
+                    // Берем точки с шагом, чтобы равномерно распределить
+                    const step = Math.max(1, Math.floor(outsidePoints.length / remaining));
+                    const index = i * step;
+                    if (index < outsidePoints.length && !filteredOutsidePoints.includes(outsidePoints[index])) {
+                        filteredOutsidePoints.push(outsidePoints[index]);
+                    }
+                }
+            }
+            
+            const outsidePointsCount = filteredOutsidePoints.length;
+            totalParticleCount = CONFIG.particleCount + outsidePointsCount;
+            
+            
+            // ========== ОБЪЕДИНЕНИЕ МАССИВОВ ==========
+            // Создаем новые массивы с увеличенным размером
+            const newPositions = new Float32Array(totalParticleCount * 3);
+            const newOriginalPositions = new Float32Array(totalParticleCount * 3);
+            const newBaseOriginalPositions = new Float32Array(totalParticleCount * 3);
+            const newStartPositions = new Float32Array(totalParticleCount * 3);
+            const newScrollDirections = new Float32Array(totalParticleCount * 3);
+            const newVelocities = new Float32Array(totalParticleCount * 3);
+            const newColors = new Float32Array(totalParticleCount * 3);
+            const newSizes = new Float32Array(totalParticleCount);
+            
+            
+            // Копируем существующие точки (внутри SVG)
+            // Копируем только нужное количество точек (внутри SVG), не больше чем CONFIG.particleCount
+            const pointsToCopy = Math.min(CONFIG.particleCount, positions.length / 3);
+            const bytesToCopy = pointsToCopy * 3;
+            
+            newPositions.set(positions.subarray(0, bytesToCopy));
+            newOriginalPositions.set(originalPositions.subarray(0, bytesToCopy));
+            newBaseOriginalPositions.set(baseOriginalPositions.subarray(0, bytesToCopy));
+            newStartPositions.set(startPositions.subarray(0, bytesToCopy));
+            newScrollDirections.set(scrollDirections.subarray(0, bytesToCopy));
+            newVelocities.set(velocities.subarray(0, bytesToCopy));
+            newColors.set(colors.subarray(0, bytesToCopy));
+            newSizes.set(sizes.subarray(0, pointsToCopy));
+            
+            // Добавляем точки вокруг SVG
+            const baseIndex = CONFIG.particleCount;
+            
+            
+            // Используем уже вычисленный maxDimension (вычислен выше для точек внутри SVG)
+            
+            for (let i = 0; i < outsidePointsCount; i++) {
+                const i3 = (baseIndex + i) * 3;
+                const point = filteredOutsidePoints[i];
+                
+                newPositions[i3] = point.x;
+                newPositions[i3 + 1] = point.y;
+                newPositions[i3 + 2] = point.z;
+                
+                newOriginalPositions[i3] = point.x;
+                newOriginalPositions[i3 + 1] = point.y;
+                newOriginalPositions[i3 + 2] = point.z;
+                
+                newBaseOriginalPositions[i3] = point.x;
+                newBaseOriginalPositions[i3 + 1] = point.y;
+                newBaseOriginalPositions[i3 + 2] = point.z;
+                
+                // Генерируем случайное направление разлёта для скролла (как для точек внутри)
+                const theta = Math.random() * Math.PI * 2; // Азимутальный угол (0 до 2π)
+                const phi = Math.acos(2 * Math.random() - 1); // Полярный угол (равномерное распределение на сфере)
+                newScrollDirections[i3] = Math.sin(phi) * Math.cos(theta);
+                newScrollDirections[i3 + 1] = Math.sin(phi) * Math.sin(theta);
+                newScrollDirections[i3 + 2] = Math.cos(phi);
+                
+                // Генерируем начальную позицию для анимации загрузки (разлет от текущей позиции)
+                const basePos = new THREE.Vector3(point.x, point.y, point.z);
+                
+                // Генерируем случайное направление разлёта
+                const startTheta = Math.random() * Math.PI * 2;
+                const startPhi = Math.acos(2 * Math.random() - 1);
+                const startDirection = new THREE.Vector3(
+                    Math.sin(startPhi) * Math.cos(startTheta),
+                    Math.sin(startPhi) * Math.sin(startTheta),
+                    Math.cos(startPhi)
+                );
+                
+                // Генерируем случайное расстояние от 5x до 10x размера формы
+                const startDistance = maxDimension * (5 + Math.random() * 5);
+                
+                // Начальная позиция = базовая позиция + направление * расстояние
+                const startPos = basePos.clone().addScaledVector(startDirection, startDistance);
+                
+                newStartPositions[i3] = startPos.x;
+                newStartPositions[i3 + 1] = startPos.y;
+                newStartPositions[i3 + 2] = startPos.z;
+                
+                // Устанавливаем начальную позицию в positions (для анимации загрузки)
+                newPositions[i3] = startPos.x;
+                newPositions[i3 + 1] = startPos.y;
+                newPositions[i3 + 2] = startPos.z;
+                
+                newVelocities[i3] = 0;
+                newVelocities[i3 + 1] = 0;
+                newVelocities[i3 + 2] = 0;
+                
+                // Генерируем размер для внешней точки (используем те же настройки)
+                const baseSize = CONFIG.pointSize;
+                const variation = CONFIG.sizeVariation;
+                const minSize = baseSize * (1 - variation);
+                const maxSize = baseSize * (1 + variation);
+                newSizes[baseIndex + i] = minSize + Math.random() * (maxSize - minSize);
+                
+                // Инициализируем цвета как белые
+                newColors[i3] = 1.0;
+                newColors[i3 + 1] = 1.0;
+                newColors[i3 + 2] = 1.0;
+            }
+            
+            
+            // Заменяем старые массивы новыми
+            positions = newPositions;
+            originalPositions = newOriginalPositions;
+            baseOriginalPositions = newBaseOriginalPositions;
+            startPositions = newStartPositions;
+            scrollDirections = newScrollDirections;
+            velocities = newVelocities;
+            colors = newColors;
+            sizes = newSizes;
+            
+            
+            // Очищаем временный mesh
+            tempMaterial.dispose();
         }
         
         // Функция пересоздания системы точек
         async function recreateParticles() {
-            // #region agent log
-            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:1125',message:'recreateParticles entry',data:{particleCount:CONFIG.particleCount},timestamp:Date.now(),sessionId:'debug-session',runId:'verification',hypothesisId:'C'})}).catch(()=>{});
-            // #endregion
             await generateParticlesFromSVG();
             
-            if (points) {
-                scene.remove(points);
-                geometry.dispose();
+            
+            
+            // Сохраняем старый объект points для удаления
+            const oldPoints = points;
+            const oldGeometry = geometry;
+            
+            // Создаем новую геометрию с правильным количеством точек
+            geometry = new THREE.BufferGeometry();
+            
+            // Создаем новые буферы с точно нужным количеством точек
+            const positionAttr = new THREE.BufferAttribute(positions, 3);
+            const colorAttr = new THREE.BufferAttribute(colors, 3);
+            const sizeAttr = new THREE.BufferAttribute(sizes, 1);
+            
+            // Явно помечаем атрибуты для обновления
+            positionAttr.needsUpdate = true;
+            colorAttr.needsUpdate = true;
+            sizeAttr.needsUpdate = true;
+            
+            geometry.setAttribute('position', positionAttr);
+            geometry.setAttribute('color', colorAttr);
+            geometry.setAttribute('size', sizeAttr);
+            
+            // Убеждаемся, что геометрия знает о количестве вершин
+            geometry.setDrawRange(0, totalParticleCount);
+            
+            
+            // Создаем новый объект Points с нуля
+            points = new THREE.Points(geometry, material);
+            
+            // Удаляем старые точки из сцены (если они были)
+            if (oldPoints) {
+                // Удаляем points из сцены
+                if (oldPoints.parent === scene) {
+                    scene.remove(oldPoints);
+                }
+                
+                // Отключаем геометрию от points перед dispose
+                oldPoints.geometry = null;
+                oldPoints.material = null;
+                
             }
             
-            geometry = new THREE.BufferGeometry();
-            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-            geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
-            // #region agent log
-            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:1138',message:'geometry created',data:{positionsLength:positions.length,colorsLength:colors.length,sizesLength:sizes.length,particleCount:CONFIG.particleCount},timestamp:Date.now(),sessionId:'debug-session',runId:'verification',hypothesisId:'C'})}).catch(()=>{});
-            // #endregion
+            // Убеждаемся, что в сцене нет других Points объектов (на случай ошибок)
+            for (let i = scene.children.length - 1; i >= 0; i--) {
+                const child = scene.children[i];
+                if (child instanceof THREE.Points && child !== points) {
+                    if (child.geometry) {
+                        child.geometry.dispose();
+                    }
+                    scene.remove(child);
+                }
+            }
             
-            points = new THREE.Points(geometry, material);
+            // Добавляем новый points в сцену
             scene.add(points);
-            // #region agent log
-            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:1142',message:'points added to scene',data:{pointsCount:points.geometry.attributes.position.count},timestamp:Date.now(),sessionId:'debug-session',runId:'verification',hypothesisId:'C'})}).catch(()=>{});
-            // #endregion
+            
+            // Очищаем старую геометрию после добавления нового объекта
+            if (oldGeometry && oldGeometry !== geometry) {
+                // Очищаем все атрибуты геометрии
+                const attrs = oldGeometry.attributes;
+                for (const key in attrs) {
+                    if (attrs[key] instanceof THREE.BufferAttribute) {
+                        attrs[key].dispose();
+                    }
+                }
+                oldGeometry.dispose();
+            }
+            
             // Перезапускаем анимацию загрузки при пересоздании частиц
             CONFIG.isLoadingAnimation = true;
             CONFIG.loadAnimationStartTime = Date.now();
@@ -1258,7 +1468,8 @@
         function updateOriginalPositionsFromScroll() {
             if (!isInitialized || baseOriginalPositions.length === 0) return;
             
-            const actualParticleCount = Math.min(CONFIG.particleCount, baseOriginalPositions.length / 3);
+            // Обрабатываем все точки (внутри + снаружи SVG)
+            const actualParticleCount = Math.min(totalParticleCount, baseOriginalPositions.length / 3);
             const spreadDistance = scrollProgress * CONFIG.scrollSpreadForce * 1.0; // Расстояние разлёта
             
             for (let i = 0; i < actualParticleCount; i++) {
@@ -1376,6 +1587,7 @@
             
             const positionsArray = geometry.attributes.position.array;
             
+            
             // Логика анимации загрузки (пружинная физика)
             if (CONFIG.isLoadingAnimation && CONFIG.loadAnimationStartTime !== null) {
                 const elapsed = Date.now() - CONFIG.loadAnimationStartTime;
@@ -1392,13 +1604,9 @@
                     CONFIG.loadAnimationEasingCurve.p2y
                 );
                 
-                // #region agent log
-                if (Math.floor(progress * 10) % 2 === 0) {
-                    fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:1276',message:'animation easing',data:{progress:progress,easingValue:easingValue,p1x:CONFIG.loadAnimationEasingCurve.p1x,p1y:CONFIG.loadAnimationEasingCurve.p1y,p2x:CONFIG.loadAnimationEasingCurve.p2x,p2y:CONFIG.loadAnimationEasingCurve.p2y},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'B'})}).catch(()=>{});
-                }
-                // #endregion
                 
-                const actualParticleCount = Math.min(CONFIG.particleCount, positionsArray.length / 3);
+                // Обрабатываем все точки (внутри + снаружи SVG)
+                const actualParticleCount = Math.min(totalParticleCount, positionsArray.length / 3);
                 
                 // Прямая интерполяция между начальными и целевыми позициями
                 // easingValue управляется кривой Безье и определяет прогресс анимации
@@ -1473,14 +1681,59 @@
                 // Проверяем, завершена ли анимация по времени
                 if (progress >= 1.0) {
                     CONFIG.isLoadingAnimation = false;
+                    // Инициализируем первую волну после завершения анимации появления
+                    if (CONFIG.waveEnabled && CONFIG.lastWaveTime === null) {
+                        CONFIG.lastWaveTime = Date.now();
+                    }
                 } else {
                     return; // Пропускаем обычную физику во время анимации загрузки
                 }
             }
             const colorsArray = geometry.attributes.color ? geometry.attributes.color.array : null;
             
+            // ========== ЛОГИКА ВОЛНЫ ==========
+            const waveCenter = new THREE.Vector3(0, 0, 0); // Центр экрана
+            const now = Date.now();
+            
+            // Вычисляем максимальный радиус волны (диагональ видимой области камеры)
+            const viewportWidth = camera.right - camera.left;
+            const viewportHeight = camera.top - camera.bottom;
+            const maxWaveRadius = Math.sqrt(viewportWidth * viewportWidth + viewportHeight * viewportHeight) / 2;
+            
+            // Создаём новые волны и распространяем существующие
+            if (CONFIG.waveEnabled && !CONFIG.isLoadingAnimation) {
+                // Инициализируем первую волну после завершения анимации появления
+                if (CONFIG.lastWaveTime === null) {
+                    CONFIG.lastWaveTime = now;
+                }
+                
+                // Создаём новую волну каждую секунду, независимо от других
+                const timeSinceLastWave = now - CONFIG.lastWaveTime;
+                if (timeSinceLastWave >= CONFIG.waveInterval) {
+                    CONFIG.waves.push({
+                        radius: 0,
+                        startTime: now,
+                        id: now
+                    });
+                    CONFIG.lastWaveTime = now;
+                }
+                
+                // Распространяем все активные волны и удаляем вышедшие за пределы
+                const dt = 0.016; // Примерно 1/60 секунды
+                for (let i = CONFIG.waves.length - 1; i >= 0; i--) {
+                    const wave = CONFIG.waves[i];
+                    wave.radius += CONFIG.waveSpeed * dt * CONFIG.timeScale;
+                    
+                    // Удаляем волны, которые вышли за пределы экрана
+                    if (wave.radius >= maxWaveRadius + CONFIG.waveWidth) {
+                        CONFIG.waves.splice(i, 1);
+                    }
+                }
+            }
+            
             // Проверяем, что массив имеет правильный размер
-            const actualParticleCount = Math.min(CONFIG.particleCount, positionsArray.length / 3);
+            // Используем totalParticleCount для обработки всех точек (внутри + снаружи SVG)
+            const actualParticleCount = Math.min(totalParticleCount, positionsArray.length / 3);
             
             // Определяем диапазон расстояний для нормализации
             let minDistance = Infinity;
@@ -1583,6 +1836,60 @@
                     velocities[i3 + 2] += (Math.random() - 0.5) * CONFIG.autonomousMotionStrength * 0.3 * CONFIG.timeScale;
                 }
                 
+                // ========== ВОЗДЕЙСТВИЕ ВОЛНЫ ==========
+                if (CONFIG.waveEnabled && CONFIG.waves.length > 0) {
+                    // Вычисляем расстояние от центра волны до частицы
+                    const waveDistance = Math.sqrt(
+                        (positionsArray[i3] - waveCenter.x) * (positionsArray[i3] - waveCenter.x) +
+                        (positionsArray[i3 + 1] - waveCenter.y) * (positionsArray[i3 + 1] - waveCenter.y) +
+                        (positionsArray[i3 + 2] - waveCenter.z) * (positionsArray[i3 + 2] - waveCenter.z)
+                    );
+                    
+                    // Вычисляем направление от центра к частице (радиально наружу) один раз для всех волн
+                    const directionToParticle = tempVector4.set(
+                        positionsArray[i3] - waveCenter.x,
+                        positionsArray[i3 + 1] - waveCenter.y,
+                        positionsArray[i3 + 2] - waveCenter.z
+                    ).normalize();
+                    
+                    // Применяем силы от всех волн, которые затрагивают эту точку
+                    let totalWaveForceX = 0;
+                    let totalWaveForceY = 0;
+                    let totalWaveForceZ = 0;
+                    
+                    for (const wave of CONFIG.waves) {
+                        // Центр волны (середина по толщине - максимальный эффект)
+                        const waveCenter = wave.radius - CONFIG.waveWidth / 2;
+                        // Стандартное отклонение для гауссова распределения
+                        const sigma = CONFIG.waveWidth / 2;
+                        // Расстояние от центра волны до частицы
+                        const distanceFromCenter = Math.abs(waveDistance - waveCenter);
+                        // Обрезка на расстоянии 2σ (практически полное покрытие распределения)
+                        const cutoffDistance = 2 * sigma;
+                        
+                        // Проверяем, находится ли частица в зоне этой волны
+                        if (distanceFromCenter <= cutoffDistance) {
+                            // Гауссово распределение: exp(-0.5 * (x/σ)²)
+                            // Максимальный эффект в центре волны (середине дуги), плавное затухание к краям
+                            const normalizedDistance = distanceFromCenter / sigma;
+                            const forceFactor = Math.exp(-0.5 * normalizedDistance * normalizedDistance);
+                            
+                            // Вычисляем силу от этой волны
+                            const waveForce = CONFIG.waveForce * forceFactor * CONFIG.timeScale;
+                            
+                            // Суммируем силы от всех волн
+                            totalWaveForceX += directionToParticle.x * waveForce;
+                            totalWaveForceY += directionToParticle.y * waveForce;
+                            totalWaveForceZ += directionToParticle.z * waveForce;
+                        }
+                    }
+                    
+                    // Применяем суммарную силу от всех волн
+                    velocities[i3] += totalWaveForceX;
+                    velocities[i3 + 1] += totalWaveForceY;
+                    velocities[i3 + 2] += totalWaveForceZ;
+                }
+                
                 positionsArray[i3] += velocities[i3] * CONFIG.timeScale;
                 positionsArray[i3 + 1] += velocities[i3 + 1] * CONFIG.timeScale;
                 positionsArray[i3 + 2] += velocities[i3 + 2] * CONFIG.timeScale;
@@ -1643,13 +1950,53 @@
                     positionsArray[i3 + 2] += velocities[i3 + 2] * dt;
                 }
                 
-                // Обновляем цвет на основе расстояния от камеры
+                // Обновляем цвет на основе расстояния от камеры и волны
                 if (colorsArray && i < distances.length && i3 + 2 < colorsArray.length) {
                     const distance = distances[i];
                     // Нормализуем расстояние от 0 до 1
                     const normalizedDistance = distanceRange > 0 ? (distance - minDistance) / distanceRange : 0;
                     // Инвертируем: ближние точки ярче (1.0), дальние темнее (0.0)
-                    const brightness = 1.0 - normalizedDistance; // От 1.0 до 0.0
+                    let brightness = 1.0 - normalizedDistance; // От 1.0 до 0.0
+                    
+                    // Аддитивное свечение от всех волн
+                    if (CONFIG.waveEnabled && CONFIG.waves.length > 0) {
+                        const waveDistance = Math.sqrt(
+                            (positionsArray[i3] - waveCenter.x) * (positionsArray[i3] - waveCenter.x) +
+                            (positionsArray[i3 + 1] - waveCenter.y) * (positionsArray[i3 + 1] - waveCenter.y) +
+                            (positionsArray[i3 + 2] - waveCenter.z) * (positionsArray[i3 + 2] - waveCenter.z)
+                        );
+                        
+                        // Суммируем свечение от всех волн, которые затрагивают эту точку
+                        let totalWaveGlow = 0;
+                        
+                        for (const wave of CONFIG.waves) {
+                            // Центр волны (середина по толщине - максимальный эффект)
+                            const waveCenter = wave.radius - CONFIG.waveWidth / 2;
+                            // Стандартное отклонение для гауссова распределения
+                            const sigma = CONFIG.waveWidth / 2;
+                            // Расстояние от центра волны до частицы
+                            const distanceFromCenter = Math.abs(waveDistance - waveCenter);
+                            // Обрезка на расстоянии 2σ (практически полное покрытие распределения)
+                            const cutoffDistance = 2 * sigma;
+                            
+                            // Проверяем, находится ли частица в зоне этой волны
+                            if (distanceFromCenter <= cutoffDistance) {
+                                // Гауссово распределение: exp(-0.5 * (x/σ)²)
+                                // Максимальное свечение в центре волны (середине дуги), плавное затухание к краям
+                                const normalizedDistance = distanceFromCenter / sigma;
+                                const glowFactor = Math.exp(-0.5 * normalizedDistance * normalizedDistance);
+                                const waveGlow = CONFIG.waveGlowIntensity * glowFactor;
+                                
+                                // Суммируем свечение от всех волн
+                                totalWaveGlow += waveGlow;
+                            }
+                        }
+                        
+                        // Аддитивно добавляем суммарное свечение к базовой яркости
+                        // Ограничиваем максимальное свечение
+                        brightness += Math.min(totalWaveGlow, CONFIG.waveGlowIntensity);
+                    }
+                    
                     const clampedBrightness = Math.max(0.0, Math.min(1.0, brightness));
                     
                     colorsArray[i3] = clampedBrightness;
@@ -1669,8 +2016,18 @@
         const toggleBtn = document.getElementById('toggleControls');
         
         toggleBtn.addEventListener('click', () => {
+            const isHidden = controls.classList.contains('hidden');
             controls.classList.toggle('hidden');
             toggleBtn.textContent = controls.classList.contains('hidden') ? 'Показать настройки' : 'Скрыть настройки';
+            
+            // Если панель показывается после скрытия, переинициализируем canvas кривой
+            if (isHidden) {
+                // Ждем, пока панель полностью отобразится
+                requestAnimationFrame(() => {
+                    setupCanvasResolution();
+                    drawCurve();
+                });
+            }
         });
         
         // Привязка слайдеров к значениям
@@ -1680,12 +2037,23 @@
             
             slider.addEventListener('input', (e) => {
                 const value = parseFloat(e.target.value);
-                CONFIG[configKey] = value;
+                // Преобразование для waveForce: новое значение (0-2) -> старое значение (0-0.002)
+                if (id === 'waveForce') {
+                    CONFIG[configKey] = value / 1000;
+                } else {
+                    CONFIG[configKey] = value;
+                }
                 
                 // Форматирование значения в зависимости от параметра
                 if (id === 'sizeVariation') {
                     valueDisplay.textContent = Math.round(value * 100) + '%';
-                } else if (id === 'autonomousMotionStrength' || id === 'springConstant' || id === 'damping') {
+                } else if (id === 'waveInterval') {
+                    valueDisplay.textContent = value.toFixed(0) + ' мс';
+                } else if (id === 'waveForce') {
+                    valueDisplay.textContent = value.toFixed(0); // Показываем целое число
+                } else if (id === 'waveWidth' || id === 'waveSpeed') {
+                    valueDisplay.textContent = value.toFixed(1); // Показываем 1 знак для ширины и скорости
+                } else if (id === 'waveGlowIntensity' || id === 'autonomousMotionStrength' || id === 'springConstant' || id === 'damping') {
                     valueDisplay.textContent = value.toFixed(2);
                 } else if (value < 1) {
                     valueDisplay.textContent = value.toFixed(2);
@@ -1696,8 +2064,8 @@
                 // Обновляем размеры частиц при изменении pointSize или sizeVariation
                 if (id === 'pointSize' || id === 'sizeVariation') {
                     // Убеждаемся, что массив sizes имеет правильный размер
-                    if (sizes.length !== CONFIG.particleCount) {
-                        sizes = new Float32Array(CONFIG.particleCount);
+                    if (sizes.length !== totalParticleCount) {
+                        sizes = new Float32Array(totalParticleCount);
                     }
                     generateParticleSizes();
                     if (geometry && geometry.attributes.size) {
@@ -1718,6 +2086,19 @@
         setupControl('scrollSpreadForce', 'scrollSpreadForce', 'scrollSpreadForceValue');
         setupControl('scrollDepth', 'scrollDepth', 'scrollDepthValue');
         setupControl('loadAnimationDuration', 'loadAnimationDuration', 'loadAnimationDurationValue');
+        setupControl('waveInterval', 'waveInterval', 'waveIntervalValue');
+        setupControl('waveWidth', 'waveWidth', 'waveWidthValue');
+        setupControl('waveSpeed', 'waveSpeed', 'waveSpeedValue');
+        setupControl('waveForce', 'waveForce', 'waveForceValue');
+        setupControl('waveGlowIntensity', 'waveGlowIntensity', 'waveGlowIntensityValue');
+        
+        // Инициализация слайдера waveForce из CONFIG (преобразование в новую шкалу)
+        const waveForceSlider = document.getElementById('waveForce');
+        const waveForceValueDisplay = document.getElementById('waveForceValue');
+        if (waveForceSlider && waveForceValueDisplay) {
+            waveForceSlider.value = CONFIG.waveForce * 1000;
+            waveForceValueDisplay.textContent = (CONFIG.waveForce * 1000).toFixed(0);
+        }
         
         // Обновляем значения слайдеров из сохраненных настроек
         if (savedConfig) {
@@ -1754,6 +2135,7 @@
                 return style.includes('border-top: 2px solid');
             });
             
+            
             if (!loadAnimationSection) return;
             
             // Находим правильный control-group по тексту label
@@ -1761,6 +2143,7 @@
                 const label = cg.querySelector('label');
                 return label && label.textContent.includes('Кривая скорости анимации');
             });
+            
             
             if (!correctControlGroup) return;
             
@@ -1817,17 +2200,33 @@
         
         // Настраиваем canvas для высокого разрешения (Retina)
         function setupCanvasResolution() {
+            if (!curveCanvas) return;
+            
             const rect = curveCanvas.getBoundingClientRect();
             const dpr = window.devicePixelRatio || 1;
             
             // Устанавливаем внутренние размеры canvas с учетом devicePixelRatio
-            const displayWidth = rect.width;
-            const displayHeight = rect.height;
-            curveCanvas.width = displayWidth * dpr;
-            curveCanvas.height = displayHeight * dpr;
+            let displayWidth = rect.width;
+            let displayHeight = rect.height;
             
-            // Масштабируем контекст для правильного отображения
-            curveCtx.scale(dpr, dpr);
+            // Если canvas скрыт или имеет нулевые размеры, используем CSS размеры как fallback
+            if (displayWidth === 0 || displayHeight === 0) {
+                const computedStyle = window.getComputedStyle(curveCanvas);
+                displayWidth = parseFloat(computedStyle.width) || 404; // Используем значение из CSS или дефолтное
+                displayHeight = parseFloat(computedStyle.height) || 202;
+            }
+            
+            
+            // Устанавливаем размеры только если они больше нуля
+            if (displayWidth > 0 && displayHeight > 0) {
+                curveCanvas.width = displayWidth * dpr;
+                curveCanvas.height = displayHeight * dpr;
+                
+                // Сброс трансформации перед масштабированием (изменение размеров canvas автоматически сбрасывает контекст, но на всякий случай)
+                curveCtx.setTransform(1, 0, 0, 1, 0, 0);
+                // Масштабируем контекст для правильного отображения
+                curveCtx.scale(dpr, dpr);
+            }
         }
         
         // Пересчитываем разрешение при изменении размера окна
@@ -1850,6 +2249,14 @@
         
         // Функция отрисовки кривой Безье на canvas
         function drawCurve() {
+            if (!curveCanvas || curveCanvas.width === 0 || curveCanvas.height === 0) {
+                // Если canvas не готов, переустанавливаем разрешение и пробуем снова
+                setupCanvasResolution();
+                if (curveCanvas.width === 0 || curveCanvas.height === 0) {
+                    return; // Если все еще нулевые размеры, выходим
+                }
+            }
+            
             // Получаем актуальные размеры с учетом масштабирования
             const actualWidth = curveCanvas.width / (window.devicePixelRatio || 1);
             const actualHeight = curveCanvas.height / (window.devicePixelRatio || 1);
@@ -2117,11 +2524,16 @@
         // Инициализируем отрисовку кривой после полной загрузки DOM
         // Используем несколько задержек для гарантии, что canvas уже отрендерен и находится в правильном месте
         function initializeCurveEditor() {
+            if (!curveCanvas) return;
+            
             fixCanvasPosition();
             requestAnimationFrame(() => {
                 fixCanvasPosition();
                 setupCanvasResolution();
-                drawCurve();
+                // Проверяем, что canvas имеет ненулевые размеры перед отрисовкой
+                if (curveCanvas.width > 0 && curveCanvas.height > 0) {
+                    drawCurve();
+                }
             });
         }
         
@@ -2142,7 +2554,8 @@
             }
             
             const positionsArray = geometry.attributes.position.array;
-            const actualParticleCount = Math.min(CONFIG.particleCount, positionsArray.length / 3);
+            // Обрабатываем все точки (внутри + снаружи SVG)
+            const actualParticleCount = Math.min(totalParticleCount, positionsArray.length / 3);
             
             // Возвращаем частицы на начальные позиции
             for (let i = 0; i < actualParticleCount; i++) {
@@ -2174,20 +2587,33 @@
         const particleCountSlider = document.getElementById('particleCount');
         const particleCountValue = document.getElementById('particleCountValue');
         let particleCountTimeout = null;
+        let lastRecreateCallTime = 0; // Отслеживаем время последнего вызова recreateParticles
         particleCountSlider.addEventListener('input', (e) => {
             const value = parseInt(e.target.value);
-            // #region agent log
-            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:2178',message:'particleCount slider changed',data:{oldCount:CONFIG.particleCount,newCount:value,baseOriginalPositionsLength:baseOriginalPositions.length,scrollDirectionsLength:scrollDirections.length},timestamp:Date.now(),sessionId:'debug-session',runId:'verification',hypothesisId:'A'})}).catch(()=>{});
-            // #endregion
             CONFIG.particleCount = value;
             particleCountValue.textContent = value;
             
             // Debounce: пересоздаём частицы только после остановки изменения слайдера
             clearTimeout(particleCountTimeout);
             particleCountTimeout = setTimeout(async () => {
-                // #region agent log
-                fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:2185',message:'calling recreateParticles',data:{particleCount:CONFIG.particleCount},timestamp:Date.now(),sessionId:'debug-session',runId:'verification',hypothesisId:'A'})}).catch(()=>{});
-                // #endregion
+                lastRecreateCallTime = Date.now();
+                await recreateParticles();
+            }, 300); // Ждём 300ms после последнего изменения
+        });
+        
+        // Обработчик для количества внешних точек с debounce для оптимизации
+        const outsideParticleCountSlider = document.getElementById('outsideParticleCount');
+        const outsideParticleCountValue = document.getElementById('outsideParticleCountValue');
+        let outsideParticleCountTimeout = null;
+        outsideParticleCountSlider.addEventListener('input', (e) => {
+            const value = parseInt(e.target.value);
+            CONFIG.outsideParticleCount = value;
+            outsideParticleCountValue.textContent = value;
+            
+            // Debounce: пересоздаём частицы только после остановки изменения слайдера
+            clearTimeout(outsideParticleCountTimeout);
+            outsideParticleCountTimeout = setTimeout(async () => {
+                lastRecreateCallTime = Date.now();
                 await recreateParticles();
             }, 300); // Ждём 300ms после последнего изменения
         });
