@@ -224,9 +224,17 @@
         <div class="control-group">
             <label>
                 Количество точек (вне формы)
-                <span class="value" id="outsideParticleCountValue">1950</span>
+                <span class="value" id="outsideParticleCountValue">8000</span>
             </label>
-            <input type="range" id="outsideParticleCount" min="0" max="2000" step="50" value="1950">
+            <input type="range" id="outsideParticleCount" min="0" max="8000" step="50" value="8000">
+        </div>
+        
+        <div class="control-group">
+            <label>
+                Процент невидимых точек (вне формы)
+                <span class="value" id="outsideInvisiblePercentageValue">30%</span>
+            </label>
+            <input type="range" id="outsideInvisiblePercentage" min="0" max="100" step="1" value="30">
         </div>
         
         <div class="control-group">
@@ -449,7 +457,8 @@
         
         let CONFIG = {
             particleCount: 8000,
-            outsideParticleCount: 1950, // Количество частиц вне SVG формы (независимо от particleCount)
+            outsideParticleCount: 8000, // Количество частиц вне SVG формы (независимо от particleCount)
+            outsideInvisiblePercentage: 30, // Процент невидимых точек вне формы (0-100)
             sphereRadius: 3.0, // Увеличиваем размер текста
             forceStrength: 100.0,
             interactionRadius: 4.0,
@@ -1274,7 +1283,12 @@
                 const variation = CONFIG.sizeVariation;
                 const minSize = baseSize * (1 - variation);
                 const maxSize = baseSize * (1 + variation);
-                const generatedSize = minSize + Math.random() * (maxSize - minSize);
+                
+                // Определенный процент точек делаем невидимыми (размер 0)
+                const invisibleChance = CONFIG.outsideInvisiblePercentage / 100;
+                const shouldBeInvisible = Math.random() < invisibleChance;
+                const generatedSize = shouldBeInvisible ? 0 : (minSize + Math.random() * (maxSize - minSize));
+                
                 newSizes[baseIndex + i] = generatedSize;
                 newBaseSizes[baseIndex + i] = generatedSize; // Сохраняем базовый размер
                 
@@ -1968,10 +1982,42 @@
                 // Обновляем размер точки на основе эффекта волны
                 if (i < baseSizes.length) {
                     const baseSize = baseSizes[i];
-                    // Применяем эффект увеличения размера (та же интенсивность, что и у силы/свечения)
-                    // Используем totalWaveSizeFactor для увеличения размера до 150% (1.0 + 0.5 * factor)
-                    const sizeMultiplier = 1.0 + totalWaveSizeFactor * 0.5;
-                    sizes[i] = baseSize * sizeMultiplier;
+                    
+                    if (baseSize === 0) {
+                        // Для невидимых точек: при прохождении волны устанавливаем случайный размер в диапазоне видимых точек
+                        if (totalWaveSizeFactor > 0) {
+                            const minSize = CONFIG.pointSize * (1 - CONFIG.sizeVariation);
+                            const maxSize = CONFIG.pointSize * (1 + CONFIG.sizeVariation);
+                            // Генерируем детерминированный случайный размер для невидимой точки на основе её индекса
+                            // Используем простую хеш-функцию для получения псевдослучайного значения от 0 до 1
+                            const hash = ((i * 2654435761) % 2147483647) / 2147483647;
+                            const invisibleBaseSize = minSize + hash * (maxSize - minSize);
+                            // Используем ту же формулу, что и для видимых точек
+                            const sizeMultiplier = 1.0 + totalWaveSizeFactor * 0.5;
+                            sizes[i] = invisibleBaseSize * sizeMultiplier;
+                            
+                            // #region agent log
+                            // Логируем данные для невидимых точек в волне
+                            if (i >= CONFIG.particleCount && i % 100 === 0) { // Логируем каждую 100-ю точку вне формы для отладки
+                                fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:1992',message:'Invisible point in wave size calculation',data:{i:i,baseSize:baseSize,invisibleBaseSize:invisibleBaseSize,minSize:minSize,maxSize:maxSize,totalWaveSizeFactor:totalWaveSizeFactor,sizeMultiplier:sizeMultiplier,calculatedSize:sizes[i],pointSize:CONFIG.pointSize,sizeVariation:CONFIG.sizeVariation},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'B'})}).catch(()=>{});
+                            }
+                            // #endregion
+                        } else {
+                            sizes[i] = 0; // Остаемся невидимыми, если волна не проходит
+                        }
+                    } else {
+                        // Для видимых точек: увеличиваем размер как обычно
+                        // Используем totalWaveSizeFactor для увеличения размера до 150% (1.0 + 0.5 * factor)
+                        const sizeMultiplier = 1.0 + totalWaveSizeFactor * 0.5;
+                        sizes[i] = baseSize * sizeMultiplier;
+                        
+                        // #region agent log
+                        // Логируем данные для видимых точек вне формы в волне (для сравнения)
+                        if (i >= CONFIG.particleCount && totalWaveSizeFactor > 0 && i % 100 === 0) {
+                            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:2000',message:'Visible point outside shape in wave size calculation',data:{i:i,baseSize:baseSize,totalWaveSizeFactor:totalWaveSizeFactor,sizeMultiplier:sizeMultiplier,calculatedSize:sizes[i]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+                        }
+                        // #endregion
+                    }
                 }
                 
                 positionsArray[i3] += velocities[i3] * CONFIG.timeScale;
@@ -2092,6 +2138,15 @@
                     let finalBrightness = clampedBrightness;
                     if (i >= CONFIG.particleCount) {
                         finalBrightness *= 0.5; // Сделать бледнее (50% яркости)
+                    }
+                    
+                    // Если точка невидима и не в волне, полностью скрыть
+                    if (i < baseSizes.length && baseSizes[i] === 0) {
+                        // Проверяем, находится ли точка в волне (используем размер как индикатор)
+                        const currentSize = sizes[i] || 0;
+                        if (currentSize === 0) {
+                            finalBrightness = 0; // Полностью скрываем невидимые точки вне волны
+                        }
                     }
                     
                     colorsArray[i3] = finalBrightness;
@@ -2715,6 +2770,23 @@
             // Debounce: пересоздаём частицы только после остановки изменения слайдера
             clearTimeout(outsideParticleCountTimeout);
             outsideParticleCountTimeout = setTimeout(async () => {
+                lastRecreateCallTime = Date.now();
+                await recreateParticles();
+            }, 300); // Ждём 300ms после последнего изменения
+        });
+        
+        // Обработчик для процента невидимых точек вне формы с debounce для оптимизации
+        const outsideInvisiblePercentageSlider = document.getElementById('outsideInvisiblePercentage');
+        const outsideInvisiblePercentageValue = document.getElementById('outsideInvisiblePercentageValue');
+        let outsideInvisiblePercentageTimeout = null;
+        outsideInvisiblePercentageSlider.addEventListener('input', (e) => {
+            const value = parseInt(e.target.value);
+            CONFIG.outsideInvisiblePercentage = value;
+            outsideInvisiblePercentageValue.textContent = value + '%';
+            
+            // Debounce: пересоздаём частицы только после остановки изменения слайдера
+            clearTimeout(outsideInvisiblePercentageTimeout);
+            outsideInvisiblePercentageTimeout = setTimeout(async () => {
                 lastRecreateCallTime = Date.now();
                 await recreateParticles();
             }, 300); // Ждём 300ms после последнего изменения
