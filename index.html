@@ -1000,16 +1000,24 @@
             
             positions = new Float32Array(CONFIG.particleCount * 3);
             originalPositions = new Float32Array(CONFIG.particleCount * 3);
+            baseOriginalPositions = new Float32Array(CONFIG.particleCount * 3); // Пересоздаем базовые исходные позиции
             startPositions = new Float32Array(CONFIG.particleCount * 3);
+            scrollDirections = new Float32Array(CONFIG.particleCount * 3); // Пересоздаем направления разлёта
             velocities = new Float32Array(CONFIG.particleCount * 3);
             colors = new Float32Array(CONFIG.particleCount * 3);
             sizes = new Float32Array(CONFIG.particleCount);
+            // #region agent log
+            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:1006',message:'arrays recreated',data:{particleCount:CONFIG.particleCount,positionsLength:positions.length,baseOriginalPositionsLength:baseOriginalPositions.length,scrollDirectionsLength:scrollDirections.length},timestamp:Date.now(),sessionId:'debug-session',runId:'verification',hypothesisId:'A'})}).catch(()=>{});
+            // #endregion
             
             // Генерируем размеры частиц
             generateParticleSizes();
             
             let particlesCreated = 0;
             let posMinX=Infinity,posMaxX=-Infinity,posMinY=Infinity,posMaxY=-Infinity,posMinZ=Infinity,posMaxZ=-Infinity;
+            // #region agent log
+            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:1013',message:'before particle loop',data:{particleCount:CONFIG.particleCount,volumePointsLength:volumePoints.length,baseOriginalPositionsLength:baseOriginalPositions.length,scrollDirectionsLength:scrollDirections.length},timestamp:Date.now(),sessionId:'debug-session',runId:'verification',hypothesisId:'A'})}).catch(()=>{});
+            // #endregion
             for (let i = 0; i < CONFIG.particleCount && i < volumePoints.length; i++) {
                 const i3 = i * 3;
                 const point = volumePoints[i];
@@ -1027,6 +1035,11 @@
                 originalPositions[i3 + 2] = point.z;
                 
                 // Сохраняем базовые исходные позиции
+                // #region agent log
+                if (i3 + 2 >= baseOriginalPositions.length) {
+                    fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:1030',message:'ERROR: baseOriginalPositions out of bounds',data:{i:i,i3:i3,baseOriginalPositionsLength:baseOriginalPositions.length,particleCount:CONFIG.particleCount},timestamp:Date.now(),sessionId:'debug-session',runId:'verification',hypothesisId:'A'})}).catch(()=>{});
+                }
+                // #endregion
                 baseOriginalPositions[i3] = point.x;
                 baseOriginalPositions[i3 + 1] = point.y;
                 baseOriginalPositions[i3 + 2] = point.z;
@@ -1034,6 +1047,11 @@
                 // Генерируем случайное направление разлёта для каждой частицы (один раз при инициализации)
                 const theta = Math.random() * Math.PI * 2; // Азимутальный угол (0 до 2π)
                 const phi = Math.acos(2 * Math.random() - 1); // Полярный угол (равномерное распределение на сфере)
+                // #region agent log
+                if (i3 + 2 >= scrollDirections.length) {
+                    fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:1037',message:'ERROR: scrollDirections out of bounds',data:{i:i,i3:i3,scrollDirectionsLength:scrollDirections.length,particleCount:CONFIG.particleCount},timestamp:Date.now(),sessionId:'debug-session',runId:'verification',hypothesisId:'A'})}).catch(()=>{});
+                }
+                // #endregion
                 scrollDirections[i3] = Math.sin(phi) * Math.cos(theta);
                 scrollDirections[i3 + 1] = Math.sin(phi) * Math.sin(theta);
                 scrollDirections[i3 + 2] = Math.cos(phi);
@@ -1048,6 +1066,9 @@
                 colors[i3 + 2] = 1.0;
                 particlesCreated++;
             }
+            // #region agent log
+            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:1067',message:'particle loop completed',data:{particlesCreated:particlesCreated,particleCount:CONFIG.particleCount,volumePointsLength:volumePoints.length},timestamp:Date.now(),sessionId:'debug-session',runId:'verification',hypothesisId:'B'})}).catch(()=>{});
+            // #endregion
             
             // Вычисляем центр облака частиц
             cloudCenter.set(0, 0, 0);
@@ -1105,6 +1126,9 @@
         
         // Функция пересоздания системы точек
         async function recreateParticles() {
+            // #region agent log
+            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:1125',message:'recreateParticles entry',data:{particleCount:CONFIG.particleCount},timestamp:Date.now(),sessionId:'debug-session',runId:'verification',hypothesisId:'C'})}).catch(()=>{});
+            // #endregion
             await generateParticlesFromSVG();
             
             if (points) {
@@ -1116,9 +1140,15 @@
             geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
             geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
             geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+            // #region agent log
+            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:1138',message:'geometry created',data:{positionsLength:positions.length,colorsLength:colors.length,sizesLength:sizes.length,particleCount:CONFIG.particleCount},timestamp:Date.now(),sessionId:'debug-session',runId:'verification',hypothesisId:'C'})}).catch(()=>{});
+            // #endregion
             
             points = new THREE.Points(geometry, material);
             scene.add(points);
+            // #region agent log
+            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:1142',message:'points added to scene',data:{pointsCount:points.geometry.attributes.position.count},timestamp:Date.now(),sessionId:'debug-session',runId:'verification',hypothesisId:'C'})}).catch(()=>{});
+            // #endregion
             // Перезапускаем анимацию загрузки при пересоздании частиц
             CONFIG.isLoadingAnimation = true;
             CONFIG.loadAnimationStartTime = Date.now();
@@ -2146,12 +2176,18 @@
         let particleCountTimeout = null;
         particleCountSlider.addEventListener('input', (e) => {
             const value = parseInt(e.target.value);
+            // #region agent log
+            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:2178',message:'particleCount slider changed',data:{oldCount:CONFIG.particleCount,newCount:value,baseOriginalPositionsLength:baseOriginalPositions.length,scrollDirectionsLength:scrollDirections.length},timestamp:Date.now(),sessionId:'debug-session',runId:'verification',hypothesisId:'A'})}).catch(()=>{});
+            // #endregion
             CONFIG.particleCount = value;
             particleCountValue.textContent = value;
             
             // Debounce: пересоздаём частицы только после остановки изменения слайдера
             clearTimeout(particleCountTimeout);
             particleCountTimeout = setTimeout(async () => {
+                // #region agent log
+                fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:2185',message:'calling recreateParticles',data:{particleCount:CONFIG.particleCount},timestamp:Date.now(),sessionId:'debug-session',runId:'verification',hypothesisId:'A'})}).catch(()=>{});
+                // #endregion
                 await recreateParticles();
             }, 300); // Ждём 300ms после последнего изменения
         });
