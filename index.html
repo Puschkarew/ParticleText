@@ -216,25 +216,25 @@
         <div class="control-group">
             <label>
                 Количество точек
-                <span class="value" id="particleCountValue">8000</span>
+                <span class="value" id="particleCountValue">6000</span>
             </label>
-            <input type="range" id="particleCount" min="3000" max="10000" step="500" value="8000">
+            <input type="range" id="particleCount" min="3000" max="10000" step="500" value="6000">
         </div>
         
         <div class="control-group">
             <label>
                 Количество точек (вне формы)
-                <span class="value" id="outsideParticleCountValue">8000</span>
+                <span class="value" id="outsideParticleCountValue">4150</span>
             </label>
-            <input type="range" id="outsideParticleCount" min="0" max="8000" step="50" value="8000">
+            <input type="range" id="outsideParticleCount" min="0" max="8000" step="50" value="4150">
         </div>
         
         <div class="control-group">
             <label>
                 Процент невидимых точек (вне формы)
-                <span class="value" id="outsideInvisiblePercentageValue">30%</span>
+                <span class="value" id="outsideInvisiblePercentageValue">88%</span>
             </label>
-            <input type="range" id="outsideInvisiblePercentage" min="0" max="100" step="1" value="30">
+            <input type="range" id="outsideInvisiblePercentage" min="0" max="100" step="1" value="88">
         </div>
         
         <div class="control-group">
@@ -280,9 +280,9 @@
         <div class="control-group">
             <label>
                 Скорость пассивного движения
-                <span class="value" id="autonomousMotionStrengthValue">0.005</span>
+                <span class="value" id="autonomousMotionStrengthValue">0.03</span>
             </label>
-            <input type="range" id="autonomousMotionStrength" min="0" max="0.05" step="0.002" value="0.005">
+            <input type="range" id="autonomousMotionStrength" min="0" max="0.05" step="0.002" value="0.03">
         </div>
         
         <div class="control-group">
@@ -335,25 +335,25 @@
             <div class="control-group">
                 <label>
                     Частота волн (мс)
-                    <span class="value" id="waveIntervalValue">4000</span>
+                    <span class="value" id="waveIntervalValue">5000</span>
                 </label>
-                <input type="range" id="waveInterval" min="200" max="5000" step="100" value="4000">
+                <input type="range" id="waveInterval" min="200" max="10000" step="100" value="5000">
             </div>
             
             <div class="control-group">
                 <label>
                     Ширина волны
-                    <span class="value" id="waveWidthValue">1.1</span>
+                    <span class="value" id="waveWidthValue">1.0</span>
                 </label>
-                <input type="range" id="waveWidth" min="1.0" max="10.0" step="0.1" value="1.1">
+                <input type="range" id="waveWidth" min="1.0" max="10.0" step="0.1" value="1.0">
             </div>
             
             <div class="control-group">
                 <label>
                     Скорость волны
-                    <span class="value" id="waveSpeedValue">4.0</span>
+                    <span class="value" id="waveSpeedValue">2.0</span>
                 </label>
-                <input type="range" id="waveSpeed" min="1.0" max="20.0" step="0.5" value="4.0">
+                <input type="range" id="waveSpeed" min="1.0" max="20.0" step="0.5" value="2.0">
             </div>
             
             <div class="control-group">
@@ -367,9 +367,17 @@
             <div class="control-group">
                 <label>
                     Сила подсвечивания
-                    <span class="value" id="waveGlowIntensityValue">0.95</span>
+                    <span class="value" id="waveGlowIntensityValue">0.00</span>
                 </label>
-                <input type="range" id="waveGlowIntensity" min="0.0" max="1.0" step="0.05" value="0.95">
+                <input type="range" id="waveGlowIntensity" min="0.0" max="1.0" step="0.05" value="0.00">
+            </div>
+            
+            <div class="control-group">
+                <label>
+                    Крутизна затухания
+                    <span class="value" id="waveForceFalloffValue">0.5</span>
+                </label>
+                <input type="range" id="waveForceFalloff" min="0.1" max="2.0" step="0.1" value="0.5">
             </div>
         </div>
         
@@ -456,9 +464,9 @@
         const savedConfig = loadConfigFromStorage();
         
         let CONFIG = {
-            particleCount: 8000,
-            outsideParticleCount: 8000, // Количество частиц вне SVG формы (независимо от particleCount)
-            outsideInvisiblePercentage: 30, // Процент невидимых точек вне формы (0-100)
+            particleCount: 6000,
+            outsideParticleCount: 4150, // Количество частиц вне SVG формы (независимо от particleCount)
+            outsideInvisiblePercentage: 88, // Процент невидимых точек вне формы (0-100)
             sphereRadius: 3.0, // Увеличиваем размер текста
             forceStrength: 100.0,
             interactionRadius: 4.0,
@@ -468,7 +476,7 @@
             timeScale: 0.80, // Глобальный множитель скорости анимации (0.5 = в 2 раза медленнее)
             pointSize: 2, // Размер точек
             sizeVariation: 0.5, // Максимальная разница размера точек (50% по умолчанию)
-            autonomousMotionStrength: 0.005, // Сила автономного движения точек
+            autonomousMotionStrength: 0.03, // Сила автономного движения точек
             chaosAngle: 45, // Максимальный угол отклонения направления (градусы)
             chaosStrength: 0.8, // Сила хаотичности (0-1)
             tangentialForceRatio: 0.4, // Соотношение тангенциальной силы
@@ -481,11 +489,12 @@
             loadAnimationEasingCurve: savedConfig?.loadAnimationEasingCurve ?? { p1x: 0.2, p1y: 0, p2x: 0.8, p2y: 1 }, // Кривая Безье для управления скоростью (по умолчанию ease-out)
             // Параметры волны
             waveEnabled: true, // Флаг включения/выключения волны
-            waveInterval: 4000, // Интервал между волнами (мс)
-            waveSpeed: 4.0, // Скорость распространения волны (единиц в секунду) - быстрое прохождение
-            waveWidth: 1.1, // Ширина волны (расстояние от переднего края до заднего) - толще волна
+            waveInterval: 5000, // Интервал между волнами (мс)
+            waveSpeed: 2.0, // Скорость распространения волны (единиц в секунду) - быстрое прохождение
+            waveWidth: 1.0, // Ширина волны (расстояние от переднего края до заднего) - толще волна
             waveForce: 0.002, // Сила воздействия на точки (очень subtle - едва заметное движение)
-            waveGlowIntensity: 0.95, // Интенсивность свечения точек в волне (0-1)
+            waveGlowIntensity: 0.00, // Интенсивность свечения точек в волне (0-1)
+            waveForceFalloff: 0.5, // Крутизна затухания силы волны от центра к краям (0.1-2.0)
             lastWaveTime: null, // Время последней волны
             waves: [] // Массив активных волн: { radius: number, startTime: number, id: number }
         };
@@ -1955,10 +1964,10 @@
                         
                         // Проверяем, находится ли частица в зоне этой волны
                         if (distanceFromCenter <= cutoffDistance) {
-                            // Гауссово распределение: exp(-0.5 * (x/σ)²)
+                            // Гауссово распределение: exp(-falloff * (x/σ)²)
                             // Максимальный эффект в центре волны (середине дуги), плавное затухание к краям
                             const normalizedDistance = distanceFromCenter / sigma;
-                            const forceFactor = Math.exp(-0.5 * normalizedDistance * normalizedDistance);
+                            const forceFactor = Math.exp(-CONFIG.waveForceFalloff * normalizedDistance * normalizedDistance);
                             
                             // Вычисляем силу от этой волны
                             const waveForce = CONFIG.waveForce * forceFactor * CONFIG.timeScale;
@@ -1984,7 +1993,7 @@
                     const baseSize = baseSizes[i];
                     
                     if (baseSize === 0) {
-                        // Для невидимых точек: при прохождении волны устанавливаем случайный размер в диапазоне видимых точек
+                        // Для невидимых точек: плавное появление и исчезновение при прохождении волны
                         if (totalWaveSizeFactor > 0) {
                             const minSize = CONFIG.pointSize * (1 - CONFIG.sizeVariation);
                             const maxSize = CONFIG.pointSize * (1 + CONFIG.sizeVariation);
@@ -1992,14 +2001,16 @@
                             // Используем простую хеш-функцию для получения псевдослучайного значения от 0 до 1
                             const hash = ((i * 2654435761) % 2147483647) / 2147483647;
                             const invisibleBaseSize = minSize + hash * (maxSize - minSize);
-                            // Используем ту же формулу, что и для видимых точек
-                            const sizeMultiplier = 1.0 + totalWaveSizeFactor * 0.5;
-                            sizes[i] = invisibleBaseSize * sizeMultiplier;
+                            // Плавное появление/исчезновение: используем totalWaveSizeFactor как fadeFactor
+                            // Ограничиваем до 1.0, чтобы при наложении нескольких волн не было превышения
+                            // Это создает плавный переход от 0 (полностью невидимо) до полного размера
+                            const fadeFactor = Math.min(totalWaveSizeFactor, 1.0);
+                            sizes[i] = invisibleBaseSize * fadeFactor;
                             
                             // #region agent log
                             // Логируем данные для невидимых точек в волне
                             if (i >= CONFIG.particleCount && i % 100 === 0) { // Логируем каждую 100-ю точку вне формы для отладки
-                                fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:1992',message:'Invisible point in wave size calculation',data:{i:i,baseSize:baseSize,invisibleBaseSize:invisibleBaseSize,minSize:minSize,maxSize:maxSize,totalWaveSizeFactor:totalWaveSizeFactor,sizeMultiplier:sizeMultiplier,calculatedSize:sizes[i],pointSize:CONFIG.pointSize,sizeVariation:CONFIG.sizeVariation},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'B'})}).catch(()=>{});
+                                fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:1992',message:'Invisible point in wave size calculation',data:{i:i,baseSize:baseSize,invisibleBaseSize:invisibleBaseSize,minSize:minSize,maxSize:maxSize,totalWaveSizeFactor:totalWaveSizeFactor,fadeFactor:fadeFactor,calculatedSize:sizes[i],pointSize:CONFIG.pointSize,sizeVariation:CONFIG.sizeVariation},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'B'})}).catch(()=>{});
                             }
                             // #endregion
                         } else {
@@ -2116,10 +2127,10 @@
                             
                             // Проверяем, находится ли частица в зоне этой волны
                             if (distanceFromCenter <= cutoffDistance) {
-                                // Гауссово распределение: exp(-0.5 * (x/σ)²)
+                                // Гауссово распределение: exp(-falloff * (x/σ)²)
                                 // Максимальное свечение в центре волны (середине дуги), плавное затухание к краям
                                 const normalizedDistance = distanceFromCenter / sigma;
-                                const glowFactor = Math.exp(-0.5 * normalizedDistance * normalizedDistance);
+                                const glowFactor = Math.exp(-CONFIG.waveForceFalloff * normalizedDistance * normalizedDistance);
                                 const waveGlow = CONFIG.waveGlowIntensity * glowFactor;
                                 
                                 // Суммируем свечение от всех волн
@@ -2204,8 +2215,8 @@
                     valueDisplay.textContent = value.toFixed(0) + ' мс';
                 } else if (id === 'waveForce') {
                     valueDisplay.textContent = value.toFixed(0); // Показываем целое число
-                } else if (id === 'waveWidth' || id === 'waveSpeed') {
-                    valueDisplay.textContent = value.toFixed(1); // Показываем 1 знак для ширины и скорости
+                } else if (id === 'waveWidth' || id === 'waveSpeed' || id === 'waveForceFalloff') {
+                    valueDisplay.textContent = value.toFixed(1); // Показываем 1 знак для ширины, скорости и крутизны затухания
                 } else if (id === 'waveGlowIntensity' || id === 'autonomousMotionStrength' || id === 'springConstant' || id === 'damping') {
                     valueDisplay.textContent = value.toFixed(2);
                 } else if (value < 1) {
@@ -2248,6 +2259,7 @@
         setupControl('waveSpeed', 'waveSpeed', 'waveSpeedValue');
         setupControl('waveForce', 'waveForce', 'waveForceValue');
         setupControl('waveGlowIntensity', 'waveGlowIntensity', 'waveGlowIntensityValue');
+        setupControl('waveForceFalloff', 'waveForceFalloff', 'waveForceFalloffValue');
         
         // Инициализация слайдера waveForce из CONFIG (преобразование в новую шкалу)
         const waveForceSlider = document.getElementById('waveForce');
