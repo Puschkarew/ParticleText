@@ -191,7 +191,12 @@ function generateParticleSizes() {
     }
     
     for (let i = 0; i < totalParticleCount; i++) {
-        sizes[i] = minSize + Math.random() * (maxSize - minSize);
+        // Сохраняем невидимость точек вне формы (baseSizes[i] === 0)
+        if (i >= CONFIG.particleCount && baseSizes && baseSizes[i] === 0) {
+            sizes[i] = 0;
+        } else {
+            sizes[i] = minSize + Math.random() * (maxSize - minSize);
+        }
     }
 }
 
@@ -1646,13 +1651,6 @@ function updatePhysics() {
                     // Это создает плавный переход от 0 (полностью невидимо) до полного размера
                     const fadeFactor = Math.min(totalWaveSizeFactor, 1.0);
                     sizes[i] = invisibleBaseSize * fadeFactor;
-                    
-                    // #region agent log
-                    // Логируем данные для невидимых точек в волне
-                    if (i >= CONFIG.particleCount && i % 100 === 0) { // Логируем каждую 100-ю точку вне формы для отладки
-                        fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:1992',message:'Invisible point in wave size calculation',data:{i:i,baseSize:baseSize,invisibleBaseSize:invisibleBaseSize,minSize:minSize,maxSize:maxSize,totalWaveSizeFactor:totalWaveSizeFactor,fadeFactor:fadeFactor,calculatedSize:sizes[i],pointSize:CONFIG.pointSize,sizeVariation:CONFIG.sizeVariation},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'B'})}).catch(()=>{});
-                    }
-                    // #endregion
                 } else {
                     sizes[i] = 0; // Остаемся невидимыми, если волна не проходит
                 }
@@ -1661,13 +1659,6 @@ function updatePhysics() {
                 // Используем totalWaveSizeFactor для увеличения размера до 150% (1.0 + 0.5 * factor)
                 const sizeMultiplier = 1.0 + totalWaveSizeFactor * 0.5;
                 sizes[i] = baseSize * sizeMultiplier;
-                
-                // #region agent log
-                // Логируем данные для видимых точек вне формы в волне (для сравнения)
-                if (i >= CONFIG.particleCount && totalWaveSizeFactor > 0 && i % 100 === 0) {
-                    fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:2000',message:'Visible point outside shape in wave size calculation',data:{i:i,baseSize:baseSize,totalWaveSizeFactor:totalWaveSizeFactor,sizeMultiplier:sizeMultiplier,calculatedSize:sizes[i]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-                }
-                // #endregion
             }
         }
         
@@ -1872,10 +1863,21 @@ function setupControl(id, configKey, valueId) {
                 sizes = new Float32Array(totalParticleCount);
             }
             generateParticleSizes();
+            
             // Обновляем базовые размеры
             if (baseSizes.length === sizes.length) {
                 baseSizes.set(sizes);
             }
+            
+            // Сбрасываем размеры невидимых точек в 0 в массиве sizes (на случай, если они были изменены волнами)
+            if (baseSizes && sizes && baseSizes.length === sizes.length) {
+                for (let i = CONFIG.particleCount; i < sizes.length; i++) {
+                    if (baseSizes[i] === 0) {
+                        sizes[i] = 0;
+                    }
+                }
+            }
+            
             if (geometry && geometry.attributes.size) {
                 geometry.attributes.size.needsUpdate = true;
             }
