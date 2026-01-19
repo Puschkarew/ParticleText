@@ -2447,7 +2447,7 @@ outsideInvisiblePercentageSlider.addEventListener('input', (e) => {
 });
 
 // ========== ОГРАНИЧЕНИЕ FPS ==========
-let maxFPS = 60; // По умолчанию 60 FPS (0 = без ограничения)
+let maxFPS = 0; // По умолчанию без ограничения (0 = без ограничения)
 let lastFrameTime = performance.now();
 
 const maxFPSSlider = document.getElementById('maxFPS');
@@ -2493,6 +2493,11 @@ const PerformanceMonitor = {
     update() {
         const currentTime = performance.now();
         const frameDelta = currentTime - this.lastFrameTime;
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:2493',message:'PerformanceMonitor.update entry',data:{currentTime,frameDelta,lastFrameTime:this.lastFrameTime,frameTimesLength:this.frameTimes.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
+        
         this.lastFrameTime = currentTime;
         
         // Добавляем время между кадрами в массив
@@ -2508,6 +2513,10 @@ const PerformanceMonitor = {
             const avgFrameTime = this.frameTimes.reduce((a, b) => a + b, 0) / this.frameTimes.length;
             this.fps = Math.round(1000 / avgFrameTime);
             this.frameTime = avgFrameTime.toFixed(2);
+            
+            // #region agent log
+            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:2509',message:'FPS calculated',data:{fps:this.fps,avgFrameTime,frameDelta,frameTimesLength:this.frameTimes.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+            // #endregion
         }
         
         // Обновляем DOM каждый кадр для плавного отображения
@@ -2603,6 +2612,10 @@ function animate() {
     const currentTime = performance.now();
     const deltaTime = currentTime - lastFrameTime;
     
+    // #region agent log
+    fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:2603',message:'animate entry',data:{currentTime,deltaTime,maxFPS,lastFrameTime},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+    
     // Ограничение FPS: если установлено ограничение и прошло недостаточно времени, пропускаем кадр
     if (maxFPS > 0) {
         const minFrameTime = 1000 / maxFPS; // Минимальное время между кадрами в мс
@@ -2611,13 +2624,25 @@ function animate() {
         // Это особенно важно, когда монитор работает на той же частоте, что и maxFPS (например, 60 Гц)
         // Для 60 FPS minFrameTime = 16.67 мс, поэтому кадры с deltaTime >= 13.67 мс не будут пропущены
         const tolerance = 3.0; // Допуск в 3 мс для учёта неточностей таймера и синхронизации с монитором
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:2614',message:'FPS limit check',data:{deltaTime,minFrameTime,tolerance,willSkip:deltaTime<minFrameTime-tolerance},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
+        
         if (deltaTime < minFrameTime - tolerance) {
+            // #region agent log
+            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:2615',message:'FRAME SKIPPED',data:{deltaTime,minFrameTime,tolerance,perfMonitorLastTime:PerformanceMonitor.lastFrameTime},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+            // #endregion
             return; // Пропускаем этот кадр
         }
     }
     
     // Обновляем время последнего кадра только если кадр был обработан
     lastFrameTime = currentTime;
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:2620',message:'frame will be rendered',data:{deltaTime,lastFrameTime:currentTime,perfMonitorLastTime:PerformanceMonitor.lastFrameTime},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
     
     updatePhysics();
     renderer.render(scene, camera);
