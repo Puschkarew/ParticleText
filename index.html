@@ -202,6 +202,25 @@
     
     <button id="toggleControls">Скрыть настройки</button>
     
+    <div id="performanceMonitor">
+        <div class="perf-metric">
+            <span class="perf-label">FPS:</span>
+            <span class="perf-value perf-value-green" id="fpsValue">60</span>
+        </div>
+        <div class="perf-metric">
+            <span class="perf-label">Frame Time:</span>
+            <span class="perf-value perf-value-green" id="frameTimeValue">16.66 ms</span>
+        </div>
+        <div class="perf-metric">
+            <span class="perf-label">Память:</span>
+            <span class="perf-value" id="memoryValue">0.0 / 0.0 MB</span>
+        </div>
+        <div class="perf-metric">
+            <span class="perf-label">Точки:</span>
+            <span class="perf-value" id="verticesValue">0</span>
+        </div>
+    </div>
+    
     <script type="importmap">
     {
         "imports": {

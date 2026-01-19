@@ -2404,11 +2404,121 @@ outsideInvisiblePercentageSlider.addEventListener('input', (e) => {
 });
 
 
+// ========== МОНИТОРИНГ ПРОИЗВОДИТЕЛЬНОСТИ ==========
+const PerformanceMonitor = {
+    lastTime: performance.now(),
+    frameCount: 0,
+    fps: 60,
+    frameTime: 16.66,
+    updateInterval: 10, // Обновлять каждые 10 кадров
+    
+    update() {
+        this.frameCount++;
+        const currentTime = performance.now();
+        const deltaTime = currentTime - this.lastTime;
+        
+        if (this.frameCount >= this.updateInterval) {
+            // Вычисляем FPS
+            this.fps = Math.round((this.frameCount * 1000) / deltaTime);
+            this.frameTime = (deltaTime / this.frameCount).toFixed(2);
+            
+            // Сбрасываем счётчик
+            this.frameCount = 0;
+            this.lastTime = currentTime;
+            
+            // Обновляем DOM
+            this.updateDOM();
+        }
+    },
+    
+    getMemoryUsage() {
+        // Пытаемся использовать performance.memory (доступно в Chrome)
+        if (performance.memory) {
+            const used = performance.memory.usedJSHeapSize / (1024 * 1024);
+            const total = performance.memory.totalJSHeapSize / (1024 * 1024);
+            return { used: used.toFixed(1), total: total.toFixed(1) };
+        }
+        
+        // Если performance.memory недоступен, оцениваем на основе буферов
+        if (!geometry || !geometry.attributes) {
+            return { used: '0.0', total: '0.0' };
+        }
+        
+        // Оценка памяти на основе размеров буферов геометрии
+        let estimatedMemory = 0;
+        
+        // Positions: Float32Array (4 bytes per float) * 3 components * particleCount
+        if (geometry.attributes.position) {
+            estimatedMemory += geometry.attributes.position.array.length * 4;
+        }
+        
+        // Colors: Float32Array (4 bytes per float) * 3 components * particleCount
+        if (geometry.attributes.color) {
+            estimatedMemory += geometry.attributes.color.array.length * 4;
+        }
+        
+        // Sizes: Float32Array (4 bytes per float) * particleCount
+        if (geometry.attributes.size) {
+            estimatedMemory += geometry.attributes.size.array.length * 4;
+        }
+        
+        // Добавляем оценку для рабочих массивов (velocities, originalPositions, etc.)
+        // Эти массивы используются для физики, но не хранятся в геометрии
+        if (typeof totalParticleCount !== 'undefined') {
+            // Оценка: positions, originalPositions, baseOriginalPositions, startPositions,
+            // scrollDirections, velocities, colors, sizes, baseSizes
+            // Каждый массив: totalParticleCount * components * 4 bytes
+            const workingArraysSize = totalParticleCount * (3 + 3 + 3 + 3 + 3 + 3 + 3 + 1 + 1) * 4;
+            estimatedMemory += workingArraysSize;
+        }
+        
+        const usedMB = estimatedMemory / (1024 * 1024);
+        const totalMB = Math.max(usedMB * 1.3, 70.0); // Оценка общего объёма с небольшим запасом
+        
+        return {
+            used: usedMB.toFixed(1),
+            total: totalMB.toFixed(1)
+        };
+    },
+    
+    getVertexCount() {
+        if (geometry && geometry.attributes && geometry.attributes.position) {
+            return geometry.attributes.position.count;
+        }
+        return totalParticleCount || 0;
+    },
+    
+    updateDOM() {
+        const fpsElement = document.getElementById('fpsValue');
+        const frameTimeElement = document.getElementById('frameTimeValue');
+        const memoryElement = document.getElementById('memoryValue');
+        const verticesElement = document.getElementById('verticesValue');
+        
+        if (fpsElement) {
+            fpsElement.textContent = this.fps;
+        }
+        
+        if (frameTimeElement) {
+            frameTimeElement.textContent = `${this.frameTime} ms`;
+        }
+        
+        if (memoryElement) {
+            const memory = this.getMemoryUsage();
+            memoryElement.textContent = `${memory.used} / ${memory.total} MB`;
+        }
+        
+        if (verticesElement) {
+            verticesElement.textContent = this.getVertexCount().toLocaleString();
+        }
+    }
+};
+
 // ========== АНИМАЦИЯ ==========
 function animate() {
     requestAnimationFrame(animate);
     updatePhysics();
     renderer.render(scene, camera);
+    PerformanceMonitor.update();
 }
 
 window.addEventListener('resize', () => {
