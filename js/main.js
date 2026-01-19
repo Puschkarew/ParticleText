@@ -153,7 +153,7 @@ camera.position.z = 12;
 camera.position.y = 0;
 camera.position.x = 0;
 
-const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 // Настраиваем рендерер для правильного смешивания прозрачности
@@ -1379,6 +1379,12 @@ function updatePhysics() {
     const viewportHeight = camera.top - camera.bottom;
     const maxWaveRadius = Math.sqrt(viewportWidth * viewportWidth + viewportHeight * viewportHeight) / 2;
     
+    // Предвычисляем границы влияния всех волн для оптимизации
+    let waveBoundsMin = Infinity;
+    let waveBoundsMax = -Infinity;
+    const sigma = CONFIG.waveWidth / 2;
+    const cutoffDistance = 2 * sigma; // Максимальное расстояние влияния волны
+    
     // Создаём новые волны и распространяем существующие
     if (CONFIG.waveEnabled && !CONFIG.isLoadingAnimation) {
         // Инициализируем первую волну после завершения анимации появления
@@ -1406,6 +1412,13 @@ function updatePhysics() {
             // Удаляем волны, которые вышли за пределы экрана
             if (wave.radius >= maxWaveRadius + CONFIG.waveWidth) {
                 CONFIG.waves.splice(i, 1);
+            } else {
+                // Предвычисляем границы влияния для early exit оптимизации
+                const waveCenterRadius = wave.radius - CONFIG.waveWidth / 2;
+                const waveMinRadius = waveCenterRadius - cutoffDistance;
+                const waveMaxRadius = waveCenterRadius + cutoffDistance;
+                waveBoundsMin = Math.min(waveBoundsMin, waveMinRadius);
+                waveBoundsMax = Math.max(waveBoundsMax, waveMaxRadius);
             }
         }
     }
@@ -1433,17 +1446,21 @@ function updatePhysics() {
     let maxDistance = -Infinity;
     const distances = [];
     
+    // Оптимизация: предвычисляем компоненты позиции камеры для избежания повторных обращений
+    const camX = camera.position.x;
+    const camY = camera.position.y;
+    const camZ = camera.position.z;
+    
     // Сначала вычисляем все расстояния
     for (let i = 0; i < actualParticleCount; i++) {
         const i3 = i * 3;
         if (i3 + 2 >= positionsArray.length) break;
         
-        tempVector.set(
-            positionsArray[i3],
-            positionsArray[i3 + 1],
-            positionsArray[i3 + 2]
-        );
-        const distance = tempVector.distanceTo(camera.position);
+        // Прямое вычисление расстояния без создания Vector3 (оптимизация)
+        const dx = positionsArray[i3] - camX;
+        const dy = positionsArray[i3 + 1] - camY;
+        const dz = positionsArray[i3 + 2] - camZ;
+        const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
         distances.push(distance);
         minDistance = Math.min(minDistance, distance);
         maxDistance = Math.max(maxDistance, distance);
@@ -1465,9 +1482,19 @@ function updatePhysics() {
             positionsArray[i3 + 2]
         );
         
-        const distance = tempVector.distanceTo(mouse3D);
+        // Используем distance squared для оптимизации (избегаем sqrt до проверки радиуса)
+        const dx = positionsArray[i3] - mouse3D.x;
+        const dy = positionsArray[i3 + 1] - mouse3D.y;
+        const dz = positionsArray[i3 + 2] - mouse3D.z;
+        const distanceSq = dx * dx + dy * dy + dz * dz;
+        const interactionRadiusSq = CONFIG.interactionRadius * CONFIG.interactionRadius;
         
-        if (distance < CONFIG.interactionRadius && (isPointerDown || speed > 0.001)) {
+        // Кэшируем расстояние до центра волн для переиспользования (оптимизация)
+        let cachedWaveDistance = null;
+        
+        if (distanceSq < interactionRadiusSq && (isPointerDown || speed > 0.001)) {
+            // Вычисляем расстояние только если частица в радиусе взаимодействия
+            const distance = Math.sqrt(distanceSq);
             // Базовое направление от курсора к точке
             const baseDirection = tempVector2.subVectors(tempVector, mouse3D).normalize();
             
@@ -1479,16 +1506,18 @@ function updatePhysics() {
             );
             
             // Вычисляем тангенциальное направление (перпендикулярно радиус-вектору)
+            // Оптимизация: переиспользуем временные векторы вместо создания новых
             // Используем векторное произведение для получения перпендикулярного вектора
-            let tangent = tempVector4.crossVectors(baseDirection, new THREE.Vector3(0, 0, 1));
+            let tangent = tempVector4.crossVectors(baseDirection, tempVector5.set(0, 0, 1));
             if (tangent.length() < 0.1) {
                 // Если векторы коллинеарны, используем другой базовый вектор
-                tangent.crossVectors(baseDirection, new THREE.Vector3(1, 0, 0));
+                tangent.crossVectors(baseDirection, tempVector5.set(1, 0, 0));
             }
             tangent.normalize();
             
             // Создаём второй перпендикулярный вектор для полного тангенциального пространства
-            const tangent2 = new THREE.Vector3().crossVectors(baseDirection, tangent).normalize();
+            // Используем tempVector3 для временного хранения (он не используется в этот момент)
+            const tangent2 = tempVector3.crossVectors(baseDirection, tangent).normalize();
             
             // Добавляем случайную тангенциальную компоненту в плоскости, перпендикулярной радиус-вектору
             const tangentialAngle = Math.random() * Math.PI * 2;
@@ -1512,7 +1541,8 @@ function updatePhysics() {
             const zComponent = (Math.random() - 0.5) * 2 * CONFIG.zAxisStrength;
             
             // Применяем силы к скорости
-            const finalDirection = new THREE.Vector3()
+            // Оптимизация: переиспользуем tempVector5 вместо создания нового Vector3
+            const finalDirection = tempVector5
                 .copy(chaoticDirection)
                 .multiplyScalar(radialForce)
                 .addScaledVector(tangent, tangentialForce);
@@ -1523,68 +1553,79 @@ function updatePhysics() {
         }
         
         // Автономное движение - плавные случайные силы (применяются не каждый кадр для плавности)
+        // Оптимизация: генерируем случайные значения только если нужно
         if (CONFIG.autonomousMotionStrength > 0 && Math.random() < 0.3) {
-            velocities[i3] += (Math.random() - 0.5) * CONFIG.autonomousMotionStrength * 0.3 * CONFIG.timeScale;
-            velocities[i3 + 1] += (Math.random() - 0.5) * CONFIG.autonomousMotionStrength * 0.3 * CONFIG.timeScale;
-            velocities[i3 + 2] += (Math.random() - 0.5) * CONFIG.autonomousMotionStrength * 0.3 * CONFIG.timeScale;
+            const randomFactor = CONFIG.autonomousMotionStrength * 0.3 * CONFIG.timeScale;
+            velocities[i3] += (Math.random() - 0.5) * randomFactor;
+            velocities[i3 + 1] += (Math.random() - 0.5) * randomFactor;
+            velocities[i3 + 2] += (Math.random() - 0.5) * randomFactor;
         }
         
         // ========== ВОЗДЕЙСТВИЕ ВОЛНЫ ==========
         let totalWaveSizeFactor = 0; // Множитель размера от волн (накапливаем forceFactor)
+        
         if (CONFIG.waveEnabled && CONFIG.waves.length > 0) {
-            // Вычисляем расстояние от центра волны до частицы
-            const waveDistance = Math.sqrt(
-                (positionsArray[i3] - waveCenter.x) * (positionsArray[i3] - waveCenter.x) +
-                (positionsArray[i3 + 1] - waveCenter.y) * (positionsArray[i3 + 1] - waveCenter.y) +
-                (positionsArray[i3 + 2] - waveCenter.z) * (positionsArray[i3 + 2] - waveCenter.z)
-            );
+            // Вычисляем расстояние от центра волны до частицы (distance squared для оптимизации)
+            const dx = positionsArray[i3] - waveCenter.x;
+            const dy = positionsArray[i3 + 1] - waveCenter.y;
+            const dz = positionsArray[i3 + 2] - waveCenter.z;
+            const waveDistanceSq = dx * dx + dy * dy + dz * dz;
+            cachedWaveDistance = Math.sqrt(waveDistanceSq);
             
-            // Вычисляем направление от центра к частице (радиально наружу) один раз для всех волн
-            const directionToParticle = tempVector4.set(
-                positionsArray[i3] - waveCenter.x,
-                positionsArray[i3 + 1] - waveCenter.y,
-                positionsArray[i3 + 2] - waveCenter.z
-            ).normalize();
-            
-            // Применяем силы от всех волн, которые затрагивают эту точку
-            let totalWaveForceX = 0;
-            let totalWaveForceY = 0;
-            let totalWaveForceZ = 0;
-            
-            for (const wave of CONFIG.waves) {
-                // Центр волны (середина по толщине - максимальный эффект)
-                const waveCenter = wave.radius - CONFIG.waveWidth / 2;
-                // Стандартное отклонение для гауссова распределения
-                const sigma = CONFIG.waveWidth / 2;
-                // Расстояние от центра волны до частицы
-                const distanceFromCenter = Math.abs(waveDistance - waveCenter);
-                // Обрезка на расстоянии 2σ (практически полное покрытие распределения)
-                const cutoffDistance = 2 * sigma;
+            // Early exit: проверяем, находится ли частица в зоне влияния любой волны
+            // Используем предвычисленные границы для быстрой проверки
+            if (cachedWaveDistance >= waveBoundsMin && cachedWaveDistance <= waveBoundsMax) {
+                // Вычисляем направление от центра к частице (радиально наружу) один раз для всех волн
+                // Используем уже вычисленные dx, dy, dz для оптимизации
+                const invDistance = 1.0 / cachedWaveDistance; // Избегаем повторного вычисления
+                const directionToParticle = tempVector4.set(
+                    dx * invDistance,
+                    dy * invDistance,
+                    dz * invDistance
+                );
                 
-                // Проверяем, находится ли частица в зоне этой волны
-                if (distanceFromCenter <= cutoffDistance) {
-                    // Гауссово распределение: exp(-falloff * (x/σ)²)
-                    // Максимальный эффект в центре волны (середине дуги), плавное затухание к краям
-                    const normalizedDistance = distanceFromCenter / sigma;
-                    const forceFactor = Math.exp(-CONFIG.waveForceFalloff * normalizedDistance * normalizedDistance);
+                // Применяем силы от всех волн, которые затрагивают эту точку
+                let totalWaveForceX = 0;
+                let totalWaveForceY = 0;
+                let totalWaveForceZ = 0;
+                
+                // Предвычисляем константы для оптимизации
+                const sigma = CONFIG.waveWidth / 2;
+                const cutoffDistance = 2 * sigma;
+                const invSigma = 1.0 / sigma;
+                
+                for (const wave of CONFIG.waves) {
+                    // Центр волны (середина по толщине - максимальный эффект)
+                    const waveCenterRadius = wave.radius - CONFIG.waveWidth / 2;
+                    // Расстояние от центра волны до частицы (используем расстояние, а не квадрат, т.к. нужна разность)
+                    const distanceFromCenter = Math.abs(cachedWaveDistance - waveCenterRadius);
                     
-                    // Вычисляем силу от этой волны
-                    const waveForce = CONFIG.waveForce * forceFactor * CONFIG.timeScale;
-                    
-                    // Суммируем силы от всех волн
-                    totalWaveForceX += directionToParticle.x * waveForce;
-                    totalWaveForceY += directionToParticle.y * waveForce;
-                    totalWaveForceZ += directionToParticle.z * waveForce;
-                    
-                    // Накапливаем forceFactor для эффекта размера (та же интенсивность, что и для силы/свечения)
-                    totalWaveSizeFactor += forceFactor;
+                    // Проверяем, находится ли частица в зоне этой волны
+                    if (distanceFromCenter <= cutoffDistance) {
+                        // Гауссово распределение: exp(-falloff * (x/σ)²)
+                        // Используем предвычисленные значения для оптимизации
+                        const normalizedDistance = distanceFromCenter * invSigma;
+                        const normalizedDistanceSq = normalizedDistance * normalizedDistance;
+                        const forceFactor = Math.exp(-CONFIG.waveForceFalloff * normalizedDistanceSq);
+                        
+                        // Вычисляем силу от этой волны
+                        const waveForce = CONFIG.waveForce * forceFactor * CONFIG.timeScale;
+                        
+                        // Суммируем силы от всех волн
+                        totalWaveForceX += directionToParticle.x * waveForce;
+                        totalWaveForceY += directionToParticle.y * waveForce;
+                        totalWaveForceZ += directionToParticle.z * waveForce;
+                        
+                        // Накапливаем forceFactor для эффекта размера (та же интенсивность, что и для силы/свечения)
+                        totalWaveSizeFactor += forceFactor;
+                    }
                 }
+                
+                // Применяем суммарную силу от всех волн
+                velocities[i3] += totalWaveForceX;
+                velocities[i3 + 1] += totalWaveForceY;
+                velocities[i3 + 2] += totalWaveForceZ;
             }
-            
-            // Применяем суммарную силу от всех волн
-            velocities[i3] += totalWaveForceX;
-            velocities[i3 + 1] += totalWaveForceY;
-            velocities[i3 + 2] += totalWaveForceZ;
         }
         
         // Обновляем размер точки на основе эффекта волны
@@ -1654,16 +1695,16 @@ function updatePhysics() {
         
         // Вычисляем смещение от исходной позиции
         const displacement = tempVector2.subVectors(tempVector3, tempVector);
-        const displacementLength = displacement.length();
-        const velocityLength = Math.sqrt(
-            velocities[i3] * velocities[i3] + 
+        // Оптимизация: используем distance squared для сравнения с порогом
+        const displacementLengthSq = displacement.lengthSq();
+        const velocityLengthSq = velocities[i3] * velocities[i3] + 
             velocities[i3 + 1] * velocities[i3 + 1] + 
-            velocities[i3 + 2] * velocities[i3 + 2]
-        );
+            velocities[i3 + 2] * velocities[i3 + 2];
         
         // Если смещение и скорость очень маленькие, просто возвращаем на место и останавливаем
         const threshold = 0.001; // Порог для остановки
-        if (displacementLength < threshold && velocityLength < threshold) {
+        const thresholdSq = threshold * threshold; // Квадрат порога для сравнения
+        if (displacementLengthSq < thresholdSq && velocityLengthSq < thresholdSq) {
             positionsArray[i3] = originalPositions[i3];
             positionsArray[i3 + 1] = originalPositions[i3 + 1];
             positionsArray[i3 + 2] = originalPositions[i3 + 2];
@@ -1704,42 +1745,42 @@ function updatePhysics() {
             let brightness = 1.0 - normalizedDistance; // От 1.0 до 0.0
             
             // Аддитивное свечение от всех волн
-            if (CONFIG.waveEnabled && CONFIG.waves.length > 0) {
-                const waveDistance = Math.sqrt(
-                    (positionsArray[i3] - waveCenter.x) * (positionsArray[i3] - waveCenter.x) +
-                    (positionsArray[i3 + 1] - waveCenter.y) * (positionsArray[i3 + 1] - waveCenter.y) +
-                    (positionsArray[i3 + 2] - waveCenter.z) * (positionsArray[i3 + 2] - waveCenter.z)
-                );
-                
-                // Суммируем свечение от всех волн, которые затрагивают эту точку
-                let totalWaveGlow = 0;
-                
-                for (const wave of CONFIG.waves) {
-                    // Центр волны (середина по толщине - максимальный эффект)
-                    const waveCenter = wave.radius - CONFIG.waveWidth / 2;
-                    // Стандартное отклонение для гауссова распределения
-                    const sigma = CONFIG.waveWidth / 2;
-                    // Расстояние от центра волны до частицы
-                    const distanceFromCenter = Math.abs(waveDistance - waveCenter);
-                    // Обрезка на расстоянии 2σ (практически полное покрытие распределения)
-                    const cutoffDistance = 2 * sigma;
+            // Переиспользуем вычисленное ранее cachedWaveDistance для оптимизации
+            if (CONFIG.waveEnabled && CONFIG.waves.length > 0 && cachedWaveDistance !== null) {
+                // Early exit: используем те же границы, что и для физики
+                if (cachedWaveDistance >= waveBoundsMin && cachedWaveDistance <= waveBoundsMax) {
+                    // Суммируем свечение от всех волн, которые затрагивают эту точку
+                    let totalWaveGlow = 0;
                     
-                    // Проверяем, находится ли частица в зоне этой волны
-                    if (distanceFromCenter <= cutoffDistance) {
-                        // Гауссово распределение: exp(-falloff * (x/σ)²)
-                        // Максимальное свечение в центре волны (середине дуги), плавное затухание к краям
-                        const normalizedDistance = distanceFromCenter / sigma;
-                        const glowFactor = Math.exp(-CONFIG.waveForceFalloff * normalizedDistance * normalizedDistance);
-                        const waveGlow = CONFIG.waveGlowIntensity * glowFactor;
+                    // Предвычисляем константы для оптимизации
+                    const sigma = CONFIG.waveWidth / 2;
+                    const cutoffDistance = 2 * sigma;
+                    const invSigma = 1.0 / sigma;
+                    
+                    for (const wave of CONFIG.waves) {
+                        // Центр волны (середина по толщине - максимальный эффект)
+                        const waveCenterRadius = wave.radius - CONFIG.waveWidth / 2;
+                        // Расстояние от центра волны до частицы
+                        const distanceFromCenter = Math.abs(cachedWaveDistance - waveCenterRadius);
                         
-                        // Суммируем свечение от всех волн
-                        totalWaveGlow += waveGlow;
+                        // Проверяем, находится ли частица в зоне этой волны
+                        if (distanceFromCenter <= cutoffDistance) {
+                            // Гауссово распределение: exp(-falloff * (x/σ)²)
+                            // Используем предвычисленные значения для оптимизации
+                            const normalizedDistance = distanceFromCenter * invSigma;
+                            const normalizedDistanceSq = normalizedDistance * normalizedDistance;
+                            const glowFactor = Math.exp(-CONFIG.waveForceFalloff * normalizedDistanceSq);
+                            const waveGlow = CONFIG.waveGlowIntensity * glowFactor;
+                            
+                            // Суммируем свечение от всех волн
+                            totalWaveGlow += waveGlow;
+                        }
                     }
+                    
+                    // Аддитивно добавляем суммарное свечение к базовой яркости
+                    // Ограничиваем максимальное свечение
+                    brightness += Math.min(totalWaveGlow, CONFIG.waveGlowIntensity);
                 }
-                
-                // Аддитивно добавляем суммарное свечение к базовой яркости
-                // Ограничиваем максимальное свечение
-                brightness += Math.min(totalWaveGlow, CONFIG.waveGlowIntensity);
             }
             
             const clampedBrightness = Math.max(0.0, Math.min(1.0, brightness));
@@ -2514,11 +2555,17 @@ const PerformanceMonitor = {
 };
 
 // ========== АНИМАЦИЯ ==========
+let frameCount = 0; // Счётчик кадров для оптимизации обновления DOM
 function animate() {
     requestAnimationFrame(animate);
     updatePhysics();
     renderer.render(scene, camera);
-    PerformanceMonitor.update();
+    
+    // Оптимизация: обновляем DOM мониторинга производительности только каждый 3-й кадр (экономия ~20 FPS на слабых устройствах)
+    frameCount++;
+    if (frameCount % 3 === 0) {
+        PerformanceMonitor.update();
+    }
 }
 
 window.addEventListener('resize', () => {
