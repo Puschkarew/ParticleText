@@ -2446,32 +2446,72 @@ outsideInvisiblePercentageSlider.addEventListener('input', (e) => {
     }, 300); // Ждём 300ms после последнего изменения
 });
 
+// ========== ОГРАНИЧЕНИЕ FPS ==========
+let maxFPS = 60; // По умолчанию 60 FPS (0 = без ограничения)
+let lastFrameTime = performance.now();
+
+const maxFPSSlider = document.getElementById('maxFPS');
+const maxFPSValue = document.getElementById('maxFPSValue');
+if (maxFPSSlider && maxFPSValue) {
+    // Функция для обновления значения FPS
+    const updateMaxFPS = (value) => {
+        const maxValue = parseInt(maxFPSSlider.max);
+        if (value >= maxValue) {
+            maxFPS = 0; // Без ограничения
+            maxFPSValue.textContent = 'Без ограничения';
+        } else {
+            maxFPS = value;
+            maxFPSValue.textContent = value.toString();
+        }
+    };
+    
+    // Инициализация при загрузке
+    const initialValue = parseInt(maxFPSSlider.value);
+    updateMaxFPS(initialValue);
+    
+    maxFPSSlider.addEventListener('input', (e) => {
+        const value = parseInt(e.target.value);
+        updateMaxFPS(value);
+        lastFrameTime = performance.now(); // Сбрасываем таймер при изменении
+        PerformanceMonitor.reset(); // Сбрасываем статистику FPS
+    });
+}
 
 // ========== МОНИТОРИНГ ПРОИЗВОДИТЕЛЬНОСТИ ==========
 const PerformanceMonitor = {
-    lastTime: performance.now(),
-    frameCount: 0,
+    lastFrameTime: performance.now(),
+    frameTimes: [], // Массив для хранения времени между кадрами
+    maxSamples: 30, // Храним последние 30 интервалов для более быстрой реакции на изменения
     fps: 60,
     frameTime: 16.66,
-    updateInterval: 10, // Обновлять каждые 10 кадров
+    
+    reset() {
+        this.frameTimes = [];
+        this.lastFrameTime = performance.now();
+    },
     
     update() {
-        this.frameCount++;
         const currentTime = performance.now();
-        const deltaTime = currentTime - this.lastTime;
+        const frameDelta = currentTime - this.lastFrameTime;
+        this.lastFrameTime = currentTime;
         
-        if (this.frameCount >= this.updateInterval) {
-            // Вычисляем FPS
-            this.fps = Math.round((this.frameCount * 1000) / deltaTime);
-            this.frameTime = (deltaTime / this.frameCount).toFixed(2);
-            
-            // Сбрасываем счётчик
-            this.frameCount = 0;
-            this.lastTime = currentTime;
-            
-            // Обновляем DOM
-            this.updateDOM();
+        // Добавляем время между кадрами в массив
+        this.frameTimes.push(frameDelta);
+        
+        // Ограничиваем размер массива
+        if (this.frameTimes.length > this.maxSamples) {
+            this.frameTimes.shift();
         }
+        
+        // Вычисляем средний FPS на основе времени между кадрами
+        if (this.frameTimes.length > 0) {
+            const avgFrameTime = this.frameTimes.reduce((a, b) => a + b, 0) / this.frameTimes.length;
+            this.fps = Math.round(1000 / avgFrameTime);
+            this.frameTime = avgFrameTime.toFixed(2);
+        }
+        
+        // Обновляем DOM каждый кадр для плавного отображения
+        this.updateDOM();
     },
     
     getMemoryUsage() {
@@ -2557,17 +2597,33 @@ const PerformanceMonitor = {
 };
 
 // ========== АНИМАЦИЯ ==========
-let frameCount = 0; // Счётчик кадров для оптимизации обновления DOM
 function animate() {
     requestAnimationFrame(animate);
+    
+    const currentTime = performance.now();
+    const deltaTime = currentTime - lastFrameTime;
+    
+    // Ограничение FPS: если установлено ограничение и прошло недостаточно времени, пропускаем кадр
+    if (maxFPS > 0) {
+        const minFrameTime = 1000 / maxFPS; // Минимальное время между кадрами в мс
+        // Используем умный допуск: если deltaTime близок к minFrameTime (в пределах 3 мс),
+        // не пропускаем кадр, так как это может быть просто неточность таймера или синхронизация с монитором
+        // Это особенно важно, когда монитор работает на той же частоте, что и maxFPS (например, 60 Гц)
+        // Для 60 FPS minFrameTime = 16.67 мс, поэтому кадры с deltaTime >= 13.67 мс не будут пропущены
+        const tolerance = 3.0; // Допуск в 3 мс для учёта неточностей таймера и синхронизации с монитором
+        if (deltaTime < minFrameTime - tolerance) {
+            return; // Пропускаем этот кадр
+        }
+    }
+    
+    // Обновляем время последнего кадра только если кадр был обработан
+    lastFrameTime = currentTime;
+    
     updatePhysics();
     renderer.render(scene, camera);
     
-    // Оптимизация: обновляем DOM мониторинга производительности только каждый 3-й кадр (экономия ~20 FPS на слабых устройствах)
-    frameCount++;
-    if (frameCount % 3 === 0) {
-        PerformanceMonitor.update();
-    }
+    // Обновляем мониторинг производительности каждый кадр для точного подсчёта FPS
+    PerformanceMonitor.update();
 }
 
 window.addEventListener('resize', () => {

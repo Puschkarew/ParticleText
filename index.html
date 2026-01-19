@@ -3,12 +3,55 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Interactive Particle Sphere</title>
+    
+    <!-- Primary Meta Tags -->
+    <title>Interactive Particle Sphere - 3D Particle Text Visualization</title>
+    <meta name="title" content="Interactive Particle Sphere - 3D Particle Text Visualization">
+    <meta name="description" content="Интерактивная 3D визуализация текста из частиц с использованием Three.js. Настройте параметры в реальном времени и наслаждайтесь красивой анимацией.">
+    <meta name="keywords" content="3D, particles, Three.js, interactive, visualization, WebGL">
+    <meta name="author" content="ParticleText">
+    
+    <!-- Resource Hints for Performance -->
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+    <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
+    <link rel="preload" href="css/style.css" as="style">
+    <link rel="preload" href="js/main.js" as="script" crossorigin>
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://puschkarew.github.io/ParticleText/">
+    <meta property="og:title" content="Interactive Particle Sphere - 3D Particle Text">
+    <meta property="og:description" content="Интерактивная 3D визуализация текста из частиц с использованием Three.js">
+    <meta property="og:image" content="https://puschkarew.github.io/ParticleText/og-image.png">
+    
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://puschkarew.github.io/ParticleText/">
+    <meta property="twitter:title" content="Interactive Particle Sphere - 3D Particle Text">
+    <meta property="twitter:description" content="Интерактивная 3D визуализация текста из частиц с использованием Three.js">
+    <meta property="twitter:image" content="https://puschkarew.github.io/ParticleText/og-image.png">
+    
+    <!-- Theme Color -->
+    <meta name="theme-color" content="#000000">
+    <meta name="msapplication-TileColor" content="#000000">
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='40' fill='%23fff'/%3E%3C/svg%3E">
+    
+    <!-- Stylesheet -->
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
     <div id="controls">
         <h3>Настройки объекта</h3>
+        
+        <div class="control-group">
+            <label>
+                Максимальный FPS
+                <span class="value" id="maxFPSValue">60</span>
+            </label>
+            <input type="range" id="maxFPS" min="30" max="300" step="1" value="60">
+        </div>
         
         <div class="control-group">
             <label>
@@ -106,7 +149,7 @@
             <input type="range" id="scrollSpreadForce" min="0" max="100" step="5" value="50">
         </div>
         
-        <div class="control-group" style="display: none;">
+        <div class="control-group" style="display:none">
             <label>
                 Глубина скролла (vh)
                 <span class="value" id="scrollDepthValue">300</span>
@@ -114,8 +157,8 @@
             <input type="range" id="scrollDepth" min="0" max="500" step="10" value="300">
         </div>
         
-        <div style="margin-top: 20px; padding-top: 20px; border-top: 2px solid rgba(255,255,255,0.2);">
-            <h3 style="margin-bottom: 15px; font-size: 16px; font-weight: 600;">Настройки анимации загрузки</h3>
+        <div style="margin-top:20px;padding-top:20px;border-top:2px solid rgba(255,255,255,.2)">
+            <h3 style="margin-bottom:15px;font-size:16px;font-weight:600">Настройки анимации загрузки</h3>
             
             <div class="control-group">
                 <label>
@@ -126,10 +169,10 @@
             </div>
             
             <div class="control-group">
-                <label style="margin-bottom: 8px;">
+                <label style="margin-bottom:8px">
                     Кривая скорости анимации
                 </label>
-                <div style="font-size: 10px; color: #999; margin-bottom: 5px;">Перетащите точки для настройки скорости в разные моменты времени</div>
+                <div style="font-size:10px;color:#999;margin-bottom:5px">Перетащите точки для настройки скорости в разные моменты времени</div>
                 <canvas id="curveEditor"></canvas>
                 <div class="preset-buttons">
                     <button class="preset-button" data-preset="linear">Linear</button>
@@ -142,8 +185,8 @@
             <button id="restartLoadAnimation" class="apply-button">Применить и перезапустить</button>
         </div>
         
-        <div style="margin-top: 20px; padding-top: 20px; border-top: 2px solid rgba(255,255,255,0.2);">
-            <h3 style="margin-bottom: 15px; font-size: 16px; font-weight: 600;">Настройки волн</h3>
+        <div style="margin-top:20px;padding-top:20px;border-top:2px solid rgba(255,255,255,.2)">
+            <h3 style="margin-bottom:15px;font-size:16px;font-weight:600">Настройки волн</h3>
             
             <div class="control-group">
                 <label>
@@ -194,7 +237,7 @@
             </div>
         </div>
         
-        <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1); font-size: 10px; color: #666;">
+        <div style="margin-top:15px;padding-top:15px;border-top:1px solid rgba(255,255,255,.1);font-size:10px;color:#666">
             Версия: scroll-spread-v3-20250116
         </div>
         
