@@ -603,6 +603,69 @@ async function calculateOptimalSVGSize(baseSize = 1.0) {
     return baseScaleFactor;
 }
 
+// Асинхронная генерация точек снаружи SVG батчами для избежания блокировки UI
+async function generateOutsidePointsAsync(svgMesh, raycaster, targetCount, viewportBounds, batchSize = 500) {
+    const outsidePoints = [];
+    // Уменьшаем количество кандидатов с 10x до 5x для оптимизации
+    const candidateCount = targetCount * 5;
+    
+    let processed = 0;
+    
+    return new Promise((resolve) => {
+        function processBatch() {
+            const batchEnd = Math.min(processed + batchSize, candidateCount);
+            
+            // Обрабатываем батч кандидатов
+            for (let i = processed; i < batchEnd; i++) {
+                const x = viewportBounds.left + Math.random() * (viewportBounds.right - viewportBounds.left);
+                const y = viewportBounds.bottom + Math.random() * (viewportBounds.top - viewportBounds.bottom);
+                const z = 0; // На той же плоскости, что и SVG
+                
+                const point = new THREE.Vector3(x, y, z);
+                
+                // Проверяем, что точка НЕ внутри SVG
+                if (!isPointInsideMesh(point, svgMesh, raycaster)) {
+                    outsidePoints.push(point);
+                }
+            }
+            
+            processed = batchEnd;
+            
+            // Продолжаем обработку или завершаем
+            if (processed < candidateCount) {
+                requestAnimationFrame(processBatch);
+            } else {
+                // Фильтруем точки для получения нужной плотности
+                const filteredOutsidePoints = [];
+                
+                // Оставляем каждую 5-ю точку (т.к. кандидатов в 5 раз больше)
+                for (let i = 0; i < outsidePoints.length; i += 5) {
+                    if (filteredOutsidePoints.length >= targetCount) break;
+                    filteredOutsidePoints.push(outsidePoints[i]);
+                }
+                
+                // Если не набрали достаточно точек, добавляем оставшиеся
+                if (filteredOutsidePoints.length < targetCount && outsidePoints.length > 0) {
+                    const remaining = targetCount - filteredOutsidePoints.length;
+                    for (let i = 0; i < remaining && i < outsidePoints.length; i++) {
+                        // Берем точки с шагом, чтобы равномерно распределить
+                        const step = Math.max(1, Math.floor(outsidePoints.length / remaining));
+                        const index = i * step;
+                        if (index < outsidePoints.length && !filteredOutsidePoints.includes(outsidePoints[index])) {
+                            filteredOutsidePoints.push(outsidePoints[index]);
+                        }
+                    }
+                }
+                
+                resolve(filteredOutsidePoints);
+            }
+        }
+        
+        // Запускаем обработку
+        processBatch();
+    });
+}
+
 // Функция генерации частиц на основе SVG
 async function generateParticlesFromSVG() {
     // Всегда пересоздаем геометрию, если она не существует
@@ -751,11 +814,8 @@ async function generateParticlesFromSVG() {
     const tempMaterial = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
     const svgMesh = new THREE.Mesh(svgGeometry, tempMaterial);
     
-    // Генерируем точки вокруг SVG
-    // Генерируем кандидатов в 10 раз больше, чем нужно, чтобы после фильтрации получить нужное количество
+    // Генерируем точки вокруг SVG асинхронно батчами
     const targetOutsideCount = CONFIG.outsideParticleCount;
-    const candidateCount = targetOutsideCount * 10; // Генерируем в 10 раз больше для фильтрации
-    
     const viewportBounds = {
         left: camera.left,
         right: camera.right,
@@ -763,42 +823,16 @@ async function generateParticlesFromSVG() {
         bottom: camera.bottom
     };
     
-    const outsidePoints = [];
     const checkRaycaster = new THREE.Raycaster();
     
-    // Генерируем точки по всему viewport
-    for (let i = 0; i < candidateCount; i++) {
-        const x = viewportBounds.left + Math.random() * (viewportBounds.right - viewportBounds.left);
-        const y = viewportBounds.bottom + Math.random() * (viewportBounds.top - viewportBounds.bottom);
-        const z = 0; // На той же плоскости, что и SVG
-        
-        const point = new THREE.Vector3(x, y, z);
-        
-        // Проверяем, что точка НЕ внутри SVG
-        if (!isPointInsideMesh(point, svgMesh, checkRaycaster)) {
-            outsidePoints.push(point);
-        }
-    }
-    
-    // Оставляем каждую 10-ю точку для получения нужной плотности
-    const filteredOutsidePoints = [];
-    for (let i = 0; i < outsidePoints.length; i += 10) {
-        if (filteredOutsidePoints.length >= targetOutsideCount) break;
-        filteredOutsidePoints.push(outsidePoints[i]);
-    }
-    
-    // Если не набрали достаточно точек, добавляем оставшиеся
-    if (filteredOutsidePoints.length < targetOutsideCount && outsidePoints.length > 0) {
-        const remaining = targetOutsideCount - filteredOutsidePoints.length;
-        for (let i = 0; i < remaining && i < outsidePoints.length; i++) {
-            // Берем точки с шагом, чтобы равномерно распределить
-            const step = Math.max(1, Math.floor(outsidePoints.length / remaining));
-            const index = i * step;
-            if (index < outsidePoints.length && !filteredOutsidePoints.includes(outsidePoints[index])) {
-                filteredOutsidePoints.push(outsidePoints[index]);
-            }
-        }
-    }
+    // Используем асинхронную генерацию для избежания блокировки UI
+    const filteredOutsidePoints = await generateOutsidePointsAsync(
+        svgMesh, 
+        checkRaycaster, 
+        targetOutsideCount, 
+        viewportBounds,
+        500 // batchSize - обрабатываем по 500 кандидатов за раз
+    );
     
     const outsidePointsCount = filteredOutsidePoints.length;
     totalParticleCount = CONFIG.particleCount + outsidePointsCount;
@@ -815,9 +849,7 @@ async function generateParticlesFromSVG() {
     const newSizes = new Float32Array(totalParticleCount);
     const newBaseSizes = new Float32Array(totalParticleCount);
     
-    
     // Копируем существующие точки (внутри SVG) из временных массивов
-    // Копируем только нужное количество точек (внутри SVG), не больше чем CONFIG.particleCount
     const pointsToCopy = Math.min(CONFIG.particleCount, tempPositions.length / 3);
     const bytesToCopy = pointsToCopy * 3;
     
@@ -923,6 +955,15 @@ async function generateParticlesFromSVG() {
     sizes = newSizes;
     baseSizes = newBaseSizes;
     
+    // Обновляем geometry, если она уже создана (для постепенного добавления точек)
+    if (geometry && points) {
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+        geometry.attributes.position.needsUpdate = true;
+        geometry.attributes.color.needsUpdate = true;
+        geometry.attributes.size.needsUpdate = true;
+    }
     
     // Очищаем временный mesh
     tempMaterial.dispose();
@@ -1083,6 +1124,8 @@ let isInitialized = false;
 (async () => {
     try {
         await generateParticlesFromSVG();
+        
+        // Создаем geometry с текущими массивами (включая точки снаружи, если они уже добавлены)
         geometry = new THREE.BufferGeometry();
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
@@ -1090,6 +1133,7 @@ let isInitialized = false;
         points = new THREE.Points(geometry, material);
         scene.add(points);
         isInitialized = true;
+        
         // Устанавливаем время начала анимации загрузки
         CONFIG.loadAnimationStartTime = Date.now();
         // Обновляем исходные позиции на основе текущего скролла
