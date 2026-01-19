@@ -63,9 +63,9 @@ function saveConfigToStorage() {
 const savedConfig = loadConfigFromStorage();
 
 let CONFIG = {
-    particleCount: 4500,
-    outsideParticleCount: 6000, // Количество частиц вне SVG формы (независимо от particleCount)
-    outsideInvisiblePercentage: 95, // Процент невидимых точек вне формы (0-100)
+    particleCount: 4000,
+    outsideParticleCount: 2000, // Количество частиц вне SVG формы (независимо от particleCount)
+    outsideInvisiblePercentage: 75, // Процент невидимых точек вне формы (0-100)
     sphereRadius: 3.0, // Увеличиваем размер текста
     forceStrength: 100.0,
     interactionRadius: 4.0,
@@ -84,15 +84,15 @@ let CONFIG = {
     scrollDepth: 300, // Глубина скролла (vh) - скрыт в UI
     isLoadingAnimation: true, // Флаг активной анимации загрузки
     loadAnimationStartTime: null, // Время начала анимации
-    loadAnimationDuration: savedConfig?.loadAnimationDuration ?? 7000, // Длительность анимации (7 секунд)
-    loadAnimationEasingCurve: savedConfig?.loadAnimationEasingCurve ?? { p1x: 0.2, p1y: 0, p2x: 0.8, p2y: 1 }, // Кривая Безье для управления скоростью (по умолчанию ease-out)
+    loadAnimationDuration: savedConfig?.loadAnimationDuration ?? 4000, // Длительность анимации (4 секунды)
+    loadAnimationEasingCurve: savedConfig?.loadAnimationEasingCurve ?? { p1x: 0, p1y: 0, p2x: 0.58, p2y: 1 }, // Кривая Безье для управления скоростью (по умолчанию ease-out)
     // Параметры волны
     waveEnabled: true, // Флаг включения/выключения волны
     waveInterval: 8000, // Интервал между волнами (мс)
-    waveSpeed: 1.0, // Скорость распространения волны (единиц в секунду) - быстрое прохождение
-    waveWidth: 1.0, // Ширина волны (расстояние от переднего края до заднего) - толще волна
+    waveSpeed: 6.0, // Скорость распространения волны (единиц в секунду) - быстрое прохождение
+    waveWidth: 1.6, // Ширина волны (расстояние от переднего края до заднего) - толще волна
     waveForce: 0.001, // Сила воздействия на точки (очень subtle - едва заметное движение)
-    waveGlowIntensity: 0.15, // Интенсивность свечения точек в волне (0-1)
+    waveGlowIntensity: 0.75, // Интенсивность свечения точек в волне (0-1)
     waveForceFalloff: 0.5, // Крутизна затухания силы волны от центра к краям (0.1-2.0)
     lastWaveTime: null, // Время последней волны
     waves: [] // Массив активных волн: { radius: number, startTime: number, id: number }
