@@ -96,7 +96,15 @@ let CONFIG = {
     waveForceFalloff: 0.5, // Крутизна затухания силы волны от центра к краям (0.1-2.0)
     lastWaveTime: null, // Время последней волны
     waves: [], // Массив активных волн: { radius: number, startTime: number, id: number }
-    maxBrightness: 1.0 // Максимальная яркость точек (0-1, где 1.0 = 100% белый цвет)
+    maxBrightness: 1.0, // Максимальная яркость точек (0-1, где 1.0 = 100% белый цвет)
+    // Параметры взрыва по клику
+    explosionEnabled: true, // Флаг включения/выключения взрыва
+    explosionForce: 10.0, // Сила разлёта (дальность)
+    explosionSpeed: 0.4, // Скорость разлёта (множитель, 0.1-2.0)
+    explosionReturnDelay: 1500, // Задержка перед возвратом точек (мс) - чем больше, тем дольше точки остаются разлетевшимися
+    explosionGlowIntensity: 0.8, // Интенсивность подсветки (0-1)
+    explosionGlowDuration: 500, // Длительность подсветки (мс)
+    explosions: [] // Массив активных взрывов: { position: Vector3, startTime: number, id: number }
 };
 
 // ========== НАСТРОЙКА SVG ==========
@@ -172,6 +180,8 @@ let velocities = new Float32Array(CONFIG.particleCount * 3);
 let colors = new Float32Array(CONFIG.particleCount * 3); // Цвета для каждой точки (RGB)
 let sizes = new Float32Array(CONFIG.particleCount); // Индивидуальные размеры каждой точки
 let baseSizes = new Float32Array(CONFIG.particleCount); // Базовые размеры точек (без эффектов волны)
+let explosionGlowEndTimes = new Float32Array(CONFIG.particleCount); // Время окончания подсветки взрыва для каждой точки
+let explosionReturnTimes = new Float32Array(CONFIG.particleCount); // Время начала возврата после взрыва для каждой точки
 let points = null;
 let svgGeometry = null;
 let cloudCenter = new THREE.Vector3(0, 0, 0); // Центр облака частиц
@@ -849,6 +859,8 @@ async function generateParticlesFromSVG() {
     const newColors = new Float32Array(totalParticleCount * 3);
     const newSizes = new Float32Array(totalParticleCount);
     const newBaseSizes = new Float32Array(totalParticleCount);
+    const newExplosionGlowEndTimes = new Float32Array(totalParticleCount);
+    const newExplosionReturnTimes = new Float32Array(totalParticleCount);
     
     // Копируем существующие точки (внутри SVG) из временных массивов
     const pointsToCopy = Math.min(CONFIG.particleCount, tempPositions.length / 3);
@@ -955,6 +967,8 @@ async function generateParticlesFromSVG() {
     colors = newColors;
     sizes = newSizes;
     baseSizes = newBaseSizes;
+    explosionGlowEndTimes = newExplosionGlowEndTimes;
+    explosionReturnTimes = newExplosionReturnTimes;
     
     // Обновляем geometry, если она уже создана (для постепенного добавления точек)
     if (geometry && points) {
@@ -984,6 +998,8 @@ async function recreateParticles() {
     const oldColors = colors ? colors.slice(0, Math.min(CONFIG.particleCount * 3, colors.length)) : null;
     const oldSizes = sizes ? sizes.slice(0, Math.min(CONFIG.particleCount, sizes.length)) : null;
     const oldBaseSizes = baseSizes ? baseSizes.slice(0, Math.min(CONFIG.particleCount, baseSizes.length)) : null;
+    const oldExplosionGlowEndTimes = explosionGlowEndTimes ? explosionGlowEndTimes.slice(0, Math.min(CONFIG.particleCount, explosionGlowEndTimes.length)) : null;
+    const oldExplosionReturnTimes = explosionReturnTimes ? explosionReturnTimes.slice(0, Math.min(CONFIG.particleCount, explosionReturnTimes.length)) : null;
     
     await generateParticlesFromSVG();
     
@@ -1151,6 +1167,7 @@ const mouse = new THREE.Vector2();
 const mouse3D = new THREE.Vector3();
 const previousMouse = new THREE.Vector2();
 const mouseVelocity = new THREE.Vector2();
+let mouseMovedThisFrame = false; // Флаг: было ли движение курсора в этом кадре
 
 const raycaster = new THREE.Raycaster();
 const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
@@ -1163,6 +1180,7 @@ function updateMousePosition(event) {
     
     mouseVelocity.x = mouse.x - previousMouse.x;
     mouseVelocity.y = mouse.y - previousMouse.y;
+    mouseMovedThisFrame = true; // Отмечаем, что было движение
     
     raycaster.setFromCamera(mouse, camera);
     const intersectionPoint = new THREE.Vector3();
@@ -1203,6 +1221,38 @@ renderer.domElement.addEventListener('pointerdown', onPointerDown);
 renderer.domElement.addEventListener('pointerup', onPointerUp);
 renderer.domElement.addEventListener('pointerleave', onPointerLeave);
 renderer.domElement.addEventListener('pointerenter', onPointerEnter);
+
+// ========== ВЗРЫВ ПО КЛИКУ ==========
+let explosionIdCounter = 0;
+
+function onExplosionClick(event) {
+    if (!CONFIG.explosionEnabled) return;
+    
+    // Вычисляем нормализованные координаты мыши
+    const clickMouse = new THREE.Vector2(
+        (event.clientX / window.innerWidth) * 2 - 1,
+        -(event.clientY / window.innerHeight) * 2 + 1
+    );
+    
+    // Вычисляем 3D позицию клика через raycaster
+    const clickRaycaster = new THREE.Raycaster();
+    clickRaycaster.setFromCamera(clickMouse, camera);
+    const clickPosition = new THREE.Vector3();
+    clickRaycaster.ray.intersectPlane(plane, clickPosition);
+    
+    // Создаем объект взрыва
+    const explosion = {
+        position: clickPosition.clone(),
+        startTime: performance.now(),
+        id: explosionIdCounter++,
+        applied: false // Флаг, что импульс уже применён
+    };
+    
+    // Добавляем взрыв в массив
+    CONFIG.explosions.push(explosion);
+}
+
+renderer.domElement.addEventListener('click', onExplosionClick);
 
 // ========== СКРОЛЛ ==========
 let scrollProgress = 0; // Нормализованная позиция скролла (0-1)
@@ -1328,6 +1378,13 @@ function updatePhysics() {
     if (!isInitialized || !geometry || !geometry.attributes.position) {
         return;
     }
+    
+    // Сбрасываем скорость мыши, если не было движения в этом кадре
+    // Это исправляет баг, когда точки продолжают двигаться после остановки курсора
+    if (!mouseMovedThisFrame) {
+        mouseVelocity.set(0, 0);
+    }
+    mouseMovedThisFrame = false; // Сбрасываем флаг для следующего кадра
     
     const positionsArray = geometry.attributes.position.array;
     
@@ -1627,6 +1684,44 @@ function updatePhysics() {
             velocities[i3 + 2] += (Math.random() - 0.5) * randomFactor;
         }
         
+        // ========== ВОЗДЕЙСТВИЕ ВЗРЫВА ==========
+        // Взрыв затрагивает ВСЕ точки и использует scrollDirections для 3D разлёта
+        if (CONFIG.explosionEnabled && CONFIG.explosions.length > 0) {
+            for (const explosion of CONFIG.explosions) {
+                if (explosion.applied) continue; // Пропускаем уже применённые взрывы
+                
+                // Используем предвычисленные направления scrollDirections для 3D разлёта
+                // Это те же направления, что используются при скролле - равномерно распределены на сфере
+                const expDirX = scrollDirections[i3];
+                const expDirY = scrollDirections[i3 + 1];
+                const expDirZ = scrollDirections[i3 + 2];
+                
+                // Добавляем небольшую случайность для более естественного эффекта
+                const randomFactor = 0.2;
+                const randX = (Math.random() - 0.5) * randomFactor;
+                const randY = (Math.random() - 0.5) * randomFactor;
+                const randZ = (Math.random() - 0.5) * randomFactor;
+                
+                // Применяем импульс к скорости (сила одинакова для всех точек)
+                const impulseStrength = CONFIG.explosionForce * 0.1;
+                velocities[i3] += (expDirX + randX) * impulseStrength;
+                velocities[i3 + 1] += (expDirY + randY) * impulseStrength;
+                velocities[i3 + 2] += (expDirZ + randZ) * impulseStrength;
+                
+                // Устанавливаем время начала возврата (задержка перед возвратом)
+                const returnTime = performance.now() + CONFIG.explosionReturnDelay;
+                if (i < explosionReturnTimes.length) {
+                    explosionReturnTimes[i] = Math.max(explosionReturnTimes[i], returnTime);
+                }
+                
+                // Устанавливаем время окончания подсветки для этой точки
+                const glowEndTime = performance.now() + CONFIG.explosionGlowDuration;
+                if (i < explosionGlowEndTimes.length) {
+                    explosionGlowEndTimes[i] = Math.max(explosionGlowEndTimes[i], glowEndTime);
+                }
+            }
+        }
+        
         // ========== ВОЗДЕЙСТВИЕ ВОЛНЫ ==========
         let totalWaveSizeFactor = 0; // Множитель размера от волн (накапливаем forceFactor)
         
@@ -1739,53 +1834,71 @@ function updatePhysics() {
             // Пропускаем эту точку, если массивы не готовы
             continue;
         }
-        tempVector3.set(
-            originalPositions[i3],
-            originalPositions[i3 + 1],
-            originalPositions[i3 + 2]
-        );
         
-        // Вычисляем смещение от исходной позиции
-        const displacement = tempVector2.subVectors(tempVector3, tempVector);
-        // Оптимизация: используем distance squared для сравнения с порогом
-        const displacementLengthSq = displacement.lengthSq();
-        const velocityLengthSq = velocities[i3] * velocities[i3] + 
-            velocities[i3 + 1] * velocities[i3 + 1] + 
-            velocities[i3 + 2] * velocities[i3 + 2];
+        // Проверяем, не находится ли точка в состоянии "разлёта" после взрыва
+        // Если время возврата ещё не наступило, не применяем силу пружины
+        const now = performance.now();
+        const isInExplosionFlight = i < explosionReturnTimes.length && explosionReturnTimes[i] > now;
         
-        // Если смещение и скорость очень маленькие, просто возвращаем на место и останавливаем
-        const threshold = 0.001; // Порог для остановки
-        const thresholdSq = threshold * threshold; // Квадрат порога для сравнения
-        if (displacementLengthSq < thresholdSq && velocityLengthSq < thresholdSq) {
-            positionsArray[i3] = originalPositions[i3];
-            positionsArray[i3 + 1] = originalPositions[i3 + 1];
-            positionsArray[i3 + 2] = originalPositions[i3 + 2];
-            velocities[i3] = 0;
-            velocities[i3 + 1] = 0;
-            velocities[i3 + 2] = 0;
-        } else {
-            // Применяем силу пружины: F_spring = springConstant * displacement
-            const springForceX = displacement.x * CONFIG.springConstant;
-            const springForceY = displacement.y * CONFIG.springConstant;
-            const springForceZ = displacement.z * CONFIG.springConstant;
-            
-            // Обновляем скорость: velocity += F_spring * dt
-            // dt примерно равен 1/60 (60 FPS), но для стабильности используем фиксированный шаг
-            const dt = 0.016 * CONFIG.timeScale; // Применяем глобальный множитель скорости
-            velocities[i3] += springForceX * dt;
-            velocities[i3 + 1] += springForceY * dt;
-            velocities[i3 + 2] += springForceZ * dt;
-            
-            // Применяем демпфирование: экспоненциальное затухание скорости
-            // damping близко к 1.0 означает сильное затухание
-            velocities[i3] *= CONFIG.damping;
-            velocities[i3 + 1] *= CONFIG.damping;
-            velocities[i3 + 2] *= CONFIG.damping;
-            
-            // Обновляем позицию: position += velocity * dt
+        if (isInExplosionFlight) {
+            // Точка ещё в разлёте - применяем скорость разлёта и лёгкое демпфирование
+            // но не притягиваем обратно
+            const dt = 0.016 * CONFIG.timeScale * CONFIG.explosionSpeed; // Применяем множитель скорости разлёта
+            velocities[i3] *= 0.98; // Лёгкое замедление во время разлёта
+            velocities[i3 + 1] *= 0.98;
+            velocities[i3 + 2] *= 0.98;
             positionsArray[i3] += velocities[i3] * dt;
             positionsArray[i3 + 1] += velocities[i3 + 1] * dt;
             positionsArray[i3 + 2] += velocities[i3 + 2] * dt;
+        } else {
+            tempVector3.set(
+                originalPositions[i3],
+                originalPositions[i3 + 1],
+                originalPositions[i3 + 2]
+            );
+            
+            // Вычисляем смещение от исходной позиции
+            const displacement = tempVector2.subVectors(tempVector3, tempVector);
+            // Оптимизация: используем distance squared для сравнения с порогом
+            const displacementLengthSq = displacement.lengthSq();
+            const velocityLengthSq = velocities[i3] * velocities[i3] + 
+                velocities[i3 + 1] * velocities[i3 + 1] + 
+                velocities[i3 + 2] * velocities[i3 + 2];
+            
+            // Если смещение и скорость очень маленькие, просто возвращаем на место и останавливаем
+            const threshold = 0.001; // Порог для остановки
+            const thresholdSq = threshold * threshold; // Квадрат порога для сравнения
+            if (displacementLengthSq < thresholdSq && velocityLengthSq < thresholdSq) {
+                positionsArray[i3] = originalPositions[i3];
+                positionsArray[i3 + 1] = originalPositions[i3 + 1];
+                positionsArray[i3 + 2] = originalPositions[i3 + 2];
+                velocities[i3] = 0;
+                velocities[i3 + 1] = 0;
+                velocities[i3 + 2] = 0;
+            } else {
+                // Применяем силу пружины: F_spring = springConstant * displacement
+                const springForceX = displacement.x * CONFIG.springConstant;
+                const springForceY = displacement.y * CONFIG.springConstant;
+                const springForceZ = displacement.z * CONFIG.springConstant;
+                
+                // Обновляем скорость: velocity += F_spring * dt
+                // dt примерно равен 1/60 (60 FPS), но для стабильности используем фиксированный шаг
+                const dt = 0.016 * CONFIG.timeScale; // Применяем глобальный множитель скорости
+                velocities[i3] += springForceX * dt;
+                velocities[i3 + 1] += springForceY * dt;
+                velocities[i3 + 2] += springForceZ * dt;
+                
+                // Применяем демпфирование: экспоненциальное затухание скорости
+                // damping близко к 1.0 означает сильное затухание
+                velocities[i3] *= CONFIG.damping;
+                velocities[i3 + 1] *= CONFIG.damping;
+                velocities[i3 + 2] *= CONFIG.damping;
+                
+                // Обновляем позицию: position += velocity * dt
+                positionsArray[i3] += velocities[i3] * dt;
+                positionsArray[i3 + 1] += velocities[i3 + 1] * dt;
+                positionsArray[i3 + 2] += velocities[i3 + 2] * dt;
+            }
         }
         
         // Обновляем цвет на основе расстояния от камеры и волны
@@ -1896,6 +2009,19 @@ function updatePhysics() {
             // ПОСЛЕ масштабирования и затемнения добавляем эффект волны
             let finalBrightness = scaledBrightness + waveGlow;
             
+            // Добавляем эффект подсветки от взрыва
+            if (CONFIG.explosionEnabled && i < explosionGlowEndTimes.length) {
+                const glowEndTime = explosionGlowEndTimes[i];
+                const now = performance.now();
+                if (glowEndTime > now) {
+                    // Плавное затухание подсветки
+                    const remainingTime = glowEndTime - now;
+                    const fadeFactor = remainingTime / CONFIG.explosionGlowDuration;
+                    const explosionGlow = CONFIG.explosionGlowIntensity * fadeFactor;
+                    finalBrightness += explosionGlow;
+                }
+            }
+            
             // Ограничиваем финальную яркость до 1.0
             finalBrightness = Math.min(finalBrightness, 1.0);
             
@@ -1903,6 +2029,17 @@ function updatePhysics() {
             colorsArray[i3 + 1] = finalBrightness;
             colorsArray[i3 + 2] = finalBrightness;
         }
+    }
+    
+    // ========== ОЧИСТКА ВЗРЫВОВ ==========
+    // Помечаем все взрывы как применённые и удаляем их
+    if (CONFIG.explosions.length > 0) {
+        // Помечаем все взрывы как применённые
+        for (const explosion of CONFIG.explosions) {
+            explosion.applied = true;
+        }
+        // Удаляем применённые взрывы (импульс мгновенный)
+        CONFIG.explosions = CONFIG.explosions.filter(exp => !exp.applied);
     }
     
     geometry.attributes.position.needsUpdate = true;
@@ -2030,6 +2167,24 @@ setupControl('waveSpeed', 'waveSpeed', 'waveSpeedValue');
 setupControl('waveForce', 'waveForce', 'waveForceValue');
 setupControl('waveGlowIntensity', 'waveGlowIntensity', 'waveGlowIntensityValue');
 setupControl('waveForceFalloff', 'waveForceFalloff', 'waveForceFalloffValue');
+
+// ========== НАСТРОЙКА КОНТРОЛОВ ВЗРЫВА ==========
+setupControl('explosionForce', 'explosionForce', 'explosionForceValue');
+setupControl('explosionSpeed', 'explosionSpeed', 'explosionSpeedValue');
+setupControl('explosionReturnDelay', 'explosionReturnDelay', 'explosionReturnDelayValue');
+
+// Обработчик для переключения взрыва
+const explosionEnabledCheckbox = document.getElementById('explosionEnabled');
+if (explosionEnabledCheckbox) {
+    explosionEnabledCheckbox.checked = CONFIG.explosionEnabled;
+    explosionEnabledCheckbox.addEventListener('change', (e) => {
+        CONFIG.explosionEnabled = e.target.checked;
+        if (!CONFIG.explosionEnabled) {
+            // Очищаем массив активных взрывов при выключении
+            CONFIG.explosions = [];
+        }
+    });
+}
 
 // Инициализация слайдера waveForce из CONFIG (преобразование в новую шкалу)
 const waveForceSlider = document.getElementById('waveForce');
