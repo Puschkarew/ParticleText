@@ -63,17 +63,17 @@ function saveConfigToStorage() {
 const savedConfig = loadConfigFromStorage();
 
 let CONFIG = {
-    particleCount: 10000,
-    outsideParticleCount: 0, // Количество частиц вне SVG формы (независимо от particleCount)
+    particleCount: 9500,
+    outsideParticleCount: 50, // Количество частиц вне SVG формы (независимо от particleCount)
     outsideInvisiblePercentage: 0, // Процент невидимых точек вне формы (0-100)
     sphereRadius: 3.0, // Увеличиваем размер текста
     forceStrength: 100.0,
-    interactionRadius: 4.0,
+    interactionRadius: 2.0,
     returnSpeed: 0.030, // Оставляем для обратной совместимости, но используем springConstant
     springConstant: 1.00, // Жёсткость пружины (сила возврата)
     damping: 0.85, // Коэффициент демпфирования (затухание колебаний, чем ближе к 1, тем сильнее затухание)
     timeScale: 0.90, // Глобальный множитель скорости анимации (0.5 = в 2 раза медленнее)
-    pointSize: 4, // Размер точек
+    pointSize: 3, // Размер точек
     sizeVariation: 0.5, // Максимальная разница размера точек (50% по умолчанию)
     autonomousMotionStrength: 0.02, // Сила автономного движения точек
     chaosAngle: 45, // Максимальный угол отклонения направления (градусы)
