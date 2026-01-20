@@ -63,17 +63,17 @@ function saveConfigToStorage() {
 const savedConfig = loadConfigFromStorage();
 
 let CONFIG = {
-    particleCount: 4000,
-    outsideParticleCount: 2000, // Количество частиц вне SVG формы (независимо от particleCount)
-    outsideInvisiblePercentage: 75, // Процент невидимых точек вне формы (0-100)
+    particleCount: 10000,
+    outsideParticleCount: 0, // Количество частиц вне SVG формы (независимо от particleCount)
+    outsideInvisiblePercentage: 0, // Процент невидимых точек вне формы (0-100)
     sphereRadius: 3.0, // Увеличиваем размер текста
     forceStrength: 100.0,
     interactionRadius: 4.0,
     returnSpeed: 0.030, // Оставляем для обратной совместимости, но используем springConstant
-    springConstant: 0.15, // Жёсткость пружины (сила возврата)
-    damping: 0.93, // Коэффициент демпфирования (затухание колебаний, чем ближе к 1, тем сильнее затухание)
-    timeScale: 0.80, // Глобальный множитель скорости анимации (0.5 = в 2 раза медленнее)
-    pointSize: 2, // Размер точек
+    springConstant: 1.00, // Жёсткость пружины (сила возврата)
+    damping: 0.85, // Коэффициент демпфирования (затухание колебаний, чем ближе к 1, тем сильнее затухание)
+    timeScale: 0.90, // Глобальный множитель скорости анимации (0.5 = в 2 раза медленнее)
+    pointSize: 4, // Размер точек
     sizeVariation: 0.5, // Максимальная разница размера точек (50% по умолчанию)
     autonomousMotionStrength: 0.02, // Сила автономного движения точек
     chaosAngle: 45, // Максимальный угол отклонения направления (градусы)
@@ -97,6 +97,7 @@ let CONFIG = {
     lastWaveTime: null, // Время последней волны
     waves: [], // Массив активных волн: { radius: number, startTime: number, id: number }
     maxBrightness: 1.0, // Максимальная яркость точек (0-1, где 1.0 = 100% белый цвет)
+    depthDarkeningStrength: 1.0, // Сила затемнения по глубине (0 = нет эффекта, 1 = максимум)
     // Параметры взрыва по клику
     explosionEnabled: true, // Флаг включения/выключения взрыва
     explosionForce: 10.0, // Сила разлёта (дальность)
@@ -1279,7 +1280,7 @@ function updateScrollProgress() {
     const maxScroll = (CONFIG.scrollDepth * window.innerHeight) / 100;
     previousScrollProgress = scrollProgress;
     scrollProgress = Math.max(0, Math.min(1, window.scrollY / maxScroll));
-    
+
     // Обновляем исходные позиции только если scrollProgress изменился
     if (Math.abs(scrollProgress - previousScrollProgress) > 0.001) {
         updateOriginalPositionsFromScroll();
@@ -1573,26 +1574,40 @@ function updatePhysics() {
     const camY = camera.position.y;
     const camZ = camera.position.z;
     
-    // Сначала вычисляем все расстояния
+    // Вычисляем глубину (только Z-расстояние от камеры)
+    // Используем ТОЛЬКО Z-координату, чтобы точки по бокам канваса НЕ затемнялись
+    // FIX: Используем ФИКСИРОВАННЫЙ диапазон глубины для расчёта яркости,
+    // чтобы яркость каждой точки зависела только от её собственной Z-позиции,
+    // а не от позиций других точек
+    
+    // Фиксированные параметры для расчёта глубины:
+    // - Камера на Z=12, точки изначально около Z=0 (расстояние ~12)
+    // - При движении точки могут уходить в Z от -50 до +50
+    // - Расстояние от камеры: Z=0 → dist=12, Z=-50 → dist=62, Z=50 → dist=38
+    // Используем фиксированный диапазон расстояний для стабильного расчёта яркости
+    const fixedMinDistance = 0;   // Минимальное расстояние (точка прямо на камере - теоретический минимум)
+    const fixedMaxDistance = 70;  // Максимальное расстояние (с запасом для скролла/взрывов)
+    const fixedDistanceRange = fixedMaxDistance - fixedMinDistance; // = 70
+    
     for (let i = 0; i < actualParticleCount; i++) {
         const i3 = i * 3;
         if (i3 + 2 >= positionsArray.length) break;
         
-        // Прямое вычисление расстояния без создания Vector3 (оптимизация)
-        const dx = positionsArray[i3] - camX;
-        const dy = positionsArray[i3 + 1] - camY;
+        // Используем ТЕКУЩУЮ Z-позицию для эффекта глубины
         const dz = positionsArray[i3 + 2] - camZ;
-        const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        const distance = Math.abs(dz);
         distances.push(distance);
+        // min/max больше не используются для расчёта яркости, но оставляем для логов
         minDistance = Math.min(minDistance, distance);
         maxDistance = Math.max(maxDistance, distance);
     }
     
-    // Нормализуем диапазон, чтобы избежать слишком резких переходов
-    const distanceRange = Math.max(maxDistance - minDistance, 0.1);
+    // Используем фиксированный диапазон вместо динамического
+    const distanceRange = fixedDistanceRange;
     
     const speed = Math.sqrt(mouseVelocity.x * mouseVelocity.x + mouseVelocity.y * mouseVelocity.y);
     const forceMultiplier = Math.min(speed * CONFIG.forceStrength, CONFIG.forceStrength * 2);
+    
     
     for (let i = 0; i < actualParticleCount; i++) {
         const i3 = i * 3;
@@ -1905,9 +1920,11 @@ function updatePhysics() {
         // Пропускаем здесь - сделаем в отдельном проходе после вычисления всех finalBrightness
     }
     
-    // Обновляем цвета: вычисляем базовую яркость БЕЗ волны, масштабируем, затем добавляем волну
+    // Обновляем цвета: базовая яркость с эффектом глубины
+    // Точки дальше от камеры немного темнее (регулируется CONFIG.depthDarkeningStrength)
     if (colorsArray) {
-        // Первый проход: вычисляем базовую яркость БЕЗ волны и находим максимум
+        
+        // Первый проход: вычисляем базовую яркость с учётом глубины
         let maxBaseBrightness = 0;
         const baseBrightnesses = [];
         const waveGlows = [];
@@ -1917,10 +1934,15 @@ function updatePhysics() {
             if (i3 + 2 >= colorsArray.length) break;
             
             const distance = distances[i];
-            // Нормализуем расстояние от 0 до 1
-            const normalizedDistance = distanceRange > 0 ? (distance - minDistance) / distanceRange : 0;
-            // Инвертируем: ближние точки ярче (1.0), дальние темнее (0.0)
-            let baseBrightness = 1.0 - normalizedDistance; // От 1.0 до 0.0
+            // Нормализуем расстояние от 0 до 1 относительно ФИКСИРОВАННОГО диапазона
+            // Это гарантирует, что яркость каждой точки зависит только от её Z-позиции,
+            // а не от позиций других точек
+            const normalizedDistance = distanceRange > 0 ? (distance - fixedMinDistance) / distanceRange : 0;
+            // Ограничиваем normalizedDistance в [0, 1] чтобы избежать артефактов при экстремальных Z
+            const clampedNormalizedDistance = Math.max(0, Math.min(1, normalizedDistance));
+            // Эффект глубины: дальние точки темнее (сила регулируется в панели управления)
+            // При depthDarkeningStrength = 0.15, яркость будет от 0.85 до 1.0
+            let baseBrightness = 1.0 - clampedNormalizedDistance * CONFIG.depthDarkeningStrength;
             
             // Если точка невидима, обнуляем базовую яркость
             if (i < baseSizes.length && baseSizes[i] === 0) {
@@ -1983,11 +2005,11 @@ function updatePhysics() {
             }
         }
         
-        // Второй проход: масштабируем базовую яркость, затем добавляем волну
-        // Если maxBrightness = 1.0 и maxBaseBrightness < 1.0, масштабируем так, чтобы максимум стал 1.0
-        const brightnessScale = (CONFIG.maxBrightness >= 0.99 && maxBaseBrightness > 0) 
-            ? CONFIG.maxBrightness / maxBaseBrightness 
-            : CONFIG.maxBrightness;
+        // Второй проход: применяем яркость напрямую без динамической нормализации
+        // FIX: Убираем нормализацию через maxBaseBrightness, которая вызывала
+        // изменение яркости ВСЕХ точек при движении ЛЮБЫХ точек
+        // Теперь просто используем CONFIG.maxBrightness как множитель
+        const brightnessScale = CONFIG.maxBrightness;
         
         for (let i = 0; i < baseBrightnesses.length; i++) {
             const i3 = i * 3;
@@ -2028,6 +2050,7 @@ function updatePhysics() {
             colorsArray[i3] = finalBrightness;
             colorsArray[i3 + 1] = finalBrightness;
             colorsArray[i3 + 2] = finalBrightness;
+            
         }
     }
     
@@ -2080,8 +2103,8 @@ function setupControl(id, configKey, valueId) {
         // Преобразование для waveForce: новое значение (0-2) -> старое значение (0-0.002)
         if (id === 'waveForce') {
             CONFIG[configKey] = value / 1000;
-        } else if (id === 'maxBrightness') {
-            // Преобразование для maxBrightness: значение слайдера (0-100) -> значение CONFIG (0-1.0)
+        } else if (id === 'maxBrightness' || id === 'depthDarkeningStrength') {
+            // Преобразование для процентных значений: слайдер (0-100) -> CONFIG (0-1.0)
             CONFIG[configKey] = value / 100;
         } else {
             CONFIG[configKey] = value;
@@ -2090,7 +2113,7 @@ function setupControl(id, configKey, valueId) {
         // Форматирование значения в зависимости от параметра
         if (id === 'sizeVariation') {
             valueDisplay.textContent = Math.round(value * 100) + '%';
-        } else if (id === 'maxBrightness') {
+        } else if (id === 'maxBrightness' || id === 'depthDarkeningStrength') {
             valueDisplay.textContent = Math.round(value) + '%';
         } else if (id === 'waveInterval') {
             valueDisplay.textContent = value.toFixed(0) + ' мс';
@@ -2151,6 +2174,7 @@ if (waveEnabledCheckbox) {
 
 setupControl('pointSize', 'pointSize', 'pointSizeValue');
 setupControl('maxBrightness', 'maxBrightness', 'maxBrightnessValue');
+setupControl('depthDarkeningStrength', 'depthDarkeningStrength', 'depthDarkeningStrengthValue');
 setupControl('sizeVariation', 'sizeVariation', 'sizeVariationValue');
 setupControl('forceStrength', 'forceStrength', 'forceStrengthValue');
 setupControl('interactionRadius', 'interactionRadius', 'interactionRadiusValue');
@@ -2200,6 +2224,14 @@ const maxBrightnessValueDisplay = document.getElementById('maxBrightnessValue');
 if (maxBrightnessSlider && maxBrightnessValueDisplay) {
     maxBrightnessSlider.value = CONFIG.maxBrightness * 100;
     maxBrightnessValueDisplay.textContent = Math.round(CONFIG.maxBrightness * 100) + '%';
+}
+
+// Инициализация слайдера depthDarkeningStrength из CONFIG (преобразование в проценты)
+const depthDarkeningSlider = document.getElementById('depthDarkeningStrength');
+const depthDarkeningValueDisplay = document.getElementById('depthDarkeningStrengthValue');
+if (depthDarkeningSlider && depthDarkeningValueDisplay) {
+    depthDarkeningSlider.value = CONFIG.depthDarkeningStrength * 100;
+    depthDarkeningValueDisplay.textContent = Math.round(CONFIG.depthDarkeningStrength * 100) + '%';
 }
 
 // Обновляем значения слайдеров из сохраненных настроек
