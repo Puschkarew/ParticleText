@@ -87,7 +87,7 @@ let CONFIG = {
     loadAnimationDuration: savedConfig?.loadAnimationDuration ?? 4000, // Длительность анимации (4 секунды)
     loadAnimationEasingCurve: savedConfig?.loadAnimationEasingCurve ?? { p1x: 0, p1y: 0, p2x: 0.58, p2y: 1 }, // Кривая Безье для управления скоростью (по умолчанию ease-out)
     // Параметры волны
-    waveEnabled: true, // Флаг включения/выключения волны
+    waveEnabled: false, // Флаг включения/выключения волны
     waveInterval: 8000, // Интервал между волнами (мс)
     waveSpeed: 6.0, // Скорость распространения волны (единиц в секунду) - быстрое прохождение
     waveWidth: 1.6, // Ширина волны (расстояние от переднего края до заднего) - толще волна
@@ -95,7 +95,8 @@ let CONFIG = {
     waveGlowIntensity: 0.75, // Интенсивность свечения точек в волне (0-1)
     waveForceFalloff: 0.5, // Крутизна затухания силы волны от центра к краям (0.1-2.0)
     lastWaveTime: null, // Время последней волны
-    waves: [] // Массив активных волн: { radius: number, startTime: number, id: number }
+    waves: [], // Массив активных волн: { radius: number, startTime: number, id: number }
+    maxBrightness: 1.0 // Максимальная яркость точек (0-1, где 1.0 = 100% белый цвет)
 };
 
 // ========== НАСТРОЙКА SVG ==========
@@ -1170,13 +1171,16 @@ function updateMousePosition(event) {
 }
 
 let isPointerDown = false;
+let isPointerInsideCanvas = false; // Флаг: курсор находится внутри канваса
 
 function onPointerMove(event) {
+    isPointerInsideCanvas = true;
     updateMousePosition(event);
 }
 
 function onPointerDown(event) {
     isPointerDown = true;
+    isPointerInsideCanvas = true;
     updateMousePosition(event);
 }
 
@@ -1184,9 +1188,21 @@ function onPointerUp(event) {
     isPointerDown = false;
 }
 
+function onPointerLeave(event) {
+    isPointerInsideCanvas = false;
+    // Сбрасываем скорость мыши, чтобы частицы не продолжали реагировать
+    mouseVelocity.set(0, 0);
+}
+
+function onPointerEnter(event) {
+    isPointerInsideCanvas = true;
+}
+
 renderer.domElement.addEventListener('pointermove', onPointerMove);
 renderer.domElement.addEventListener('pointerdown', onPointerDown);
 renderer.domElement.addEventListener('pointerup', onPointerUp);
+renderer.domElement.addEventListener('pointerleave', onPointerLeave);
+renderer.domElement.addEventListener('pointerenter', onPointerEnter);
 
 // ========== СКРОЛЛ ==========
 let scrollProgress = 0; // Нормализованная позиция скролла (0-1)
@@ -1541,7 +1557,8 @@ function updatePhysics() {
         // Кэшируем расстояние до центра волн для переиспользования (оптимизация)
         let cachedWaveDistance = null;
         
-        if (distanceSq < interactionRadiusSq && (isPointerDown || speed > 0.001)) {
+        // Проверяем, что курсор находится внутри канваса перед применением сил
+        if (isPointerInsideCanvas && distanceSq < interactionRadiusSq && (isPointerDown || speed > 0.001)) {
             // Вычисляем расстояние только если частица в радиусе взаимодействия
             const distance = Math.sqrt(distanceSq);
             // Базовое направление от курсора к точке
@@ -1772,21 +1789,47 @@ function updatePhysics() {
         }
         
         // Обновляем цвет на основе расстояния от камеры и волны
-        if (colorsArray && i < distances.length && i3 + 2 < colorsArray.length) {
+        // Пропускаем здесь - сделаем в отдельном проходе после вычисления всех finalBrightness
+    }
+    
+    // Обновляем цвета: вычисляем базовую яркость БЕЗ волны, масштабируем, затем добавляем волну
+    if (colorsArray) {
+        // Первый проход: вычисляем базовую яркость БЕЗ волны и находим максимум
+        let maxBaseBrightness = 0;
+        const baseBrightnesses = [];
+        const waveGlows = [];
+        
+        for (let i = 0; i < actualParticleCount && i < distances.length; i++) {
+            const i3 = i * 3;
+            if (i3 + 2 >= colorsArray.length) break;
+            
             const distance = distances[i];
             // Нормализуем расстояние от 0 до 1
             const normalizedDistance = distanceRange > 0 ? (distance - minDistance) / distanceRange : 0;
             // Инвертируем: ближние точки ярче (1.0), дальние темнее (0.0)
-            let brightness = 1.0 - normalizedDistance; // От 1.0 до 0.0
+            let baseBrightness = 1.0 - normalizedDistance; // От 1.0 до 0.0
             
-            // Аддитивное свечение от всех волн
-            // Переиспользуем вычисленное ранее cachedWaveDistance для оптимизации
-            if (CONFIG.waveEnabled && CONFIG.waves.length > 0 && cachedWaveDistance !== null) {
+            // Если точка невидима, обнуляем базовую яркость
+            if (i < baseSizes.length && baseSizes[i] === 0) {
+                // Проверяем, находится ли точка в волне (используем размер как индикатор)
+                const currentSize = sizes[i] || 0;
+                if (currentSize === 0) {
+                    baseBrightness = 0; // Полностью скрываем невидимые точки вне волны
+                }
+            }
+            
+            baseBrightnesses.push(baseBrightness);
+            
+            // Вычисляем свечение от волн ОТДЕЛЬНО (не добавляем к baseBrightness)
+            let totalWaveGlow = 0;
+            if (CONFIG.waveEnabled && CONFIG.waves.length > 0) {
+                const dx = positionsArray[i3] - waveCenter.x;
+                const dy = positionsArray[i3 + 1] - waveCenter.y;
+                const dz = positionsArray[i3 + 2] - waveCenter.z;
+                const cachedWaveDistance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                
                 // Early exit: используем те же границы, что и для физики
                 if (cachedWaveDistance >= waveBoundsMin && cachedWaveDistance <= waveBoundsMax) {
-                    // Суммируем свечение от всех волн, которые затрагивают эту точку
-                    let totalWaveGlow = 0;
-                    
                     // Предвычисляем константы для оптимизации
                     const sigma = CONFIG.waveWidth / 2;
                     const cutoffDistance = 2 * sigma;
@@ -1801,7 +1844,6 @@ function updatePhysics() {
                         // Проверяем, находится ли частица в зоне этой волны
                         if (distanceFromCenter <= cutoffDistance) {
                             // Гауссово распределение: exp(-falloff * (x/σ)²)
-                            // Используем предвычисленные значения для оптимизации
                             const normalizedDistance = distanceFromCenter * invSigma;
                             const normalizedDistanceSq = normalizedDistance * normalizedDistance;
                             const glowFactor = Math.exp(-CONFIG.waveForceFalloff * normalizedDistanceSq);
@@ -1812,28 +1854,50 @@ function updatePhysics() {
                         }
                     }
                     
-                    // Аддитивно добавляем суммарное свечение к базовой яркости
                     // Ограничиваем максимальное свечение
-                    brightness += Math.min(totalWaveGlow, CONFIG.waveGlowIntensity);
+                    totalWaveGlow = Math.min(totalWaveGlow, CONFIG.waveGlowIntensity);
                 }
             }
+            waveGlows.push(totalWaveGlow);
             
-            const clampedBrightness = Math.max(0.0, Math.min(1.0, brightness));
+            // Находим максимум БАЗОВОЙ яркости (без волны) только среди ВИДИМЫХ точек внутри SVG
+            // Исключаем точки вне SVG и невидимые точки
+            const isInsideSVG = i < CONFIG.particleCount;
+            const isVisible = !(i < baseSizes.length && baseSizes[i] === 0 && sizes[i] === 0);
             
-            // Затемняем точки вне SVG формы
-            let finalBrightness = clampedBrightness;
-            if (i >= CONFIG.particleCount) {
-                finalBrightness *= 0.5; // Сделать бледнее (50% яркости)
+            if (baseBrightness > maxBaseBrightness && isInsideSVG && isVisible) {
+                maxBaseBrightness = baseBrightness;
+            }
+        }
+        
+        // Второй проход: масштабируем базовую яркость, затем добавляем волну
+        // Если maxBrightness = 1.0 и maxBaseBrightness < 1.0, масштабируем так, чтобы максимум стал 1.0
+        const brightnessScale = (CONFIG.maxBrightness >= 0.99 && maxBaseBrightness > 0) 
+            ? CONFIG.maxBrightness / maxBaseBrightness 
+            : CONFIG.maxBrightness;
+        
+        for (let i = 0; i < baseBrightnesses.length; i++) {
+            const i3 = i * 3;
+            if (i3 + 2 >= colorsArray.length) break;
+            
+            const baseBrightness = baseBrightnesses[i];
+            const waveGlow = waveGlows[i];
+            
+            // Масштабируем базовую яркость
+            let scaledBrightness = baseBrightness * brightnessScale;
+            
+            // ПОСЛЕ масштабирования затемняем точки вне SVG формы
+            // НО не затемняем при maxBrightness >= 99% (пользователь хочет максимальную яркость для всех точек)
+            const isOutsideSVG = i >= CONFIG.particleCount;
+            if (isOutsideSVG && CONFIG.maxBrightness < 0.99) {
+                scaledBrightness *= 0.5; // Сделать бледнее (50% яркости)
             }
             
-            // Если точка невидима и не в волне, полностью скрыть
-            if (i < baseSizes.length && baseSizes[i] === 0) {
-                // Проверяем, находится ли точка в волне (используем размер как индикатор)
-                const currentSize = sizes[i] || 0;
-                if (currentSize === 0) {
-                    finalBrightness = 0; // Полностью скрываем невидимые точки вне волны
-                }
-            }
+            // ПОСЛЕ масштабирования и затемнения добавляем эффект волны
+            let finalBrightness = scaledBrightness + waveGlow;
+            
+            // Ограничиваем финальную яркость до 1.0
+            finalBrightness = Math.min(finalBrightness, 1.0);
             
             colorsArray[i3] = finalBrightness;
             colorsArray[i3 + 1] = finalBrightness;
@@ -1879,6 +1943,9 @@ function setupControl(id, configKey, valueId) {
         // Преобразование для waveForce: новое значение (0-2) -> старое значение (0-0.002)
         if (id === 'waveForce') {
             CONFIG[configKey] = value / 1000;
+        } else if (id === 'maxBrightness') {
+            // Преобразование для maxBrightness: значение слайдера (0-100) -> значение CONFIG (0-1.0)
+            CONFIG[configKey] = value / 100;
         } else {
             CONFIG[configKey] = value;
         }
@@ -1886,6 +1953,8 @@ function setupControl(id, configKey, valueId) {
         // Форматирование значения в зависимости от параметра
         if (id === 'sizeVariation') {
             valueDisplay.textContent = Math.round(value * 100) + '%';
+        } else if (id === 'maxBrightness') {
+            valueDisplay.textContent = Math.round(value) + '%';
         } else if (id === 'waveInterval') {
             valueDisplay.textContent = value.toFixed(0) + ' мс';
         } else if (id === 'waveForce') {
@@ -1929,7 +1998,22 @@ function setupControl(id, configKey, valueId) {
     });
 }
 
+// Обработчик для переключения волны
+const waveEnabledCheckbox = document.getElementById('waveEnabled');
+if (waveEnabledCheckbox) {
+    waveEnabledCheckbox.checked = CONFIG.waveEnabled;
+    waveEnabledCheckbox.addEventListener('change', (e) => {
+        CONFIG.waveEnabled = e.target.checked;
+        if (!CONFIG.waveEnabled) {
+            // Очищаем массив активных волн при выключении
+            CONFIG.waves = [];
+            CONFIG.lastWaveTime = null;
+        }
+    });
+}
+
 setupControl('pointSize', 'pointSize', 'pointSizeValue');
+setupControl('maxBrightness', 'maxBrightness', 'maxBrightnessValue');
 setupControl('sizeVariation', 'sizeVariation', 'sizeVariationValue');
 setupControl('forceStrength', 'forceStrength', 'forceStrengthValue');
 setupControl('interactionRadius', 'interactionRadius', 'interactionRadiusValue');
@@ -1953,6 +2037,14 @@ const waveForceValueDisplay = document.getElementById('waveForceValue');
 if (waveForceSlider && waveForceValueDisplay) {
     waveForceSlider.value = CONFIG.waveForce * 1000;
     waveForceValueDisplay.textContent = (CONFIG.waveForce * 1000).toFixed(0);
+}
+
+// Инициализация слайдера maxBrightness из CONFIG (преобразование в проценты)
+const maxBrightnessSlider = document.getElementById('maxBrightness');
+const maxBrightnessValueDisplay = document.getElementById('maxBrightnessValue');
+if (maxBrightnessSlider && maxBrightnessValueDisplay) {
+    maxBrightnessSlider.value = CONFIG.maxBrightness * 100;
+    maxBrightnessValueDisplay.textContent = Math.round(CONFIG.maxBrightness * 100) + '%';
 }
 
 // Обновляем значения слайдеров из сохраненных настроек
@@ -2538,10 +2630,6 @@ const PerformanceMonitor = {
         const currentTime = performance.now();
         const frameDelta = currentTime - this.lastFrameTime;
         
-        // #region agent log
-        fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:2493',message:'PerformanceMonitor.update entry',data:{currentTime,frameDelta,lastFrameTime:this.lastFrameTime,frameTimesLength:this.frameTimes.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
-        
         this.lastFrameTime = currentTime;
         
         // Добавляем время между кадрами в массив
@@ -2557,10 +2645,6 @@ const PerformanceMonitor = {
             const avgFrameTime = this.frameTimes.reduce((a, b) => a + b, 0) / this.frameTimes.length;
             this.fps = Math.round(1000 / avgFrameTime);
             this.frameTime = avgFrameTime.toFixed(2);
-            
-            // #region agent log
-            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:2509',message:'FPS calculated',data:{fps:this.fps,avgFrameTime,frameDelta,frameTimesLength:this.frameTimes.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-            // #endregion
         }
         
         // Обновляем DOM каждый кадр для плавного отображения
@@ -2656,10 +2740,6 @@ function animate() {
     const currentTime = performance.now();
     const deltaTime = currentTime - lastFrameTime;
     
-    // #region agent log
-    fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:2603',message:'animate entry',data:{currentTime,deltaTime,maxFPS,lastFrameTime},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
-    
     // Ограничение FPS: если установлено ограничение и прошло недостаточно времени, пропускаем кадр
     if (maxFPS > 0) {
         const minFrameTime = 1000 / maxFPS; // Минимальное время между кадрами в мс
@@ -2669,24 +2749,13 @@ function animate() {
         // Для 60 FPS minFrameTime = 16.67 мс, поэтому кадры с deltaTime >= 13.67 мс не будут пропущены
         const tolerance = 3.0; // Допуск в 3 мс для учёта неточностей таймера и синхронизации с монитором
         
-        // #region agent log
-        fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:2614',message:'FPS limit check',data:{deltaTime,minFrameTime,tolerance,willSkip:deltaTime<minFrameTime-tolerance},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-        // #endregion
-        
         if (deltaTime < minFrameTime - tolerance) {
-            // #region agent log
-            fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:2615',message:'FRAME SKIPPED',data:{deltaTime,minFrameTime,tolerance,perfMonitorLastTime:PerformanceMonitor.lastFrameTime},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-            // #endregion
             return; // Пропускаем этот кадр
         }
     }
     
     // Обновляем время последнего кадра только если кадр был обработан
     lastFrameTime = currentTime;
-    
-    // #region agent log
-    fetch('http://127.0.0.1:7245/ingest/89b2e029-a23d-413f-83ed-b51c0fc8924c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:2620',message:'frame will be rendered',data:{deltaTime,lastFrameTime:currentTime,perfMonitorLastTime:PerformanceMonitor.lastFrameTime},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
     
     updatePhysics();
     renderer.render(scene, camera);

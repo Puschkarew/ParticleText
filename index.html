@@ -56,9 +56,17 @@
         <div class="control-group">
             <label>
                 Размер точек
-                <span class="value" id="pointSizeValue">2</span>
+                <span class="value" id="pointSizeValue">3</span>
             </label>
-            <input type="range" id="pointSize" min="1" max="10" step="0.1" value="2">
+            <input type="range" id="pointSize" min="1" max="10" step="0.1" value="3">
+        </div>
+        
+        <div class="control-group">
+            <label>
+                Максимальная яркость
+                <span class="value" id="maxBrightnessValue">100%</span>
+            </label>
+            <input type="range" id="maxBrightness" min="0" max="100" step="1" value="100">
         </div>
         
         <div class="control-group">
@@ -72,25 +80,25 @@
         <div class="control-group">
             <label>
                 Количество точек
-                <span class="value" id="particleCountValue">4000</span>
+                <span class="value" id="particleCountValue">10000</span>
             </label>
-            <input type="range" id="particleCount" min="3000" max="10000" step="500" value="4000">
+            <input type="range" id="particleCount" min="3000" max="10000" step="500" value="10000">
         </div>
         
         <div class="control-group">
             <label>
                 Количество точек (вне формы)
-                <span class="value" id="outsideParticleCountValue">2000</span>
+                <span class="value" id="outsideParticleCountValue">0</span>
             </label>
-            <input type="range" id="outsideParticleCount" min="0" max="8000" step="50" value="2000">
+            <input type="range" id="outsideParticleCount" min="0" max="8000" step="50" value="0">
         </div>
         
         <div class="control-group">
             <label>
                 Процент невидимых точек (вне формы)
-                <span class="value" id="outsideInvisiblePercentageValue">75%</span>
+                <span class="value" id="outsideInvisiblePercentageValue">0%</span>
             </label>
-            <input type="range" id="outsideInvisiblePercentage" min="0" max="100" step="1" value="75">
+            <input type="range" id="outsideInvisiblePercentage" min="0" max="100" step="1" value="0">
         </div>
         
         <div class="control-group">
@@ -112,25 +120,25 @@
         <div class="control-group">
             <label>
                 Жёсткость пружины
-                <span class="value" id="springConstantValue">0.15</span>
+                <span class="value" id="springConstantValue">1.00</span>
             </label>
-            <input type="range" id="springConstant" min="0.1" max="1.0" step="0.05" value="0.15">
+            <input type="range" id="springConstant" min="0.1" max="1.0" step="0.05" value="1.00">
         </div>
         
         <div class="control-group">
             <label>
                 Демпфирование
-                <span class="value" id="dampingValue">0.93</span>
+                <span class="value" id="dampingValue">0.85</span>
             </label>
-            <input type="range" id="damping" min="0.85" max="0.99" step="0.01" value="0.93">
+            <input type="range" id="damping" min="0.85" max="0.99" step="0.01" value="0.85">
         </div>
         
         <div class="control-group">
             <label>
                 Скорость анимации
-                <span class="value" id="timeScaleValue">0.80</span>
+                <span class="value" id="timeScaleValue">0.90</span>
             </label>
-            <input type="range" id="timeScale" min="0.1" max="1.0" step="0.05" value="0.80">
+            <input type="range" id="timeScale" min="0.1" max="1.0" step="0.05" value="0.90">
         </div>
         
         <div class="control-group">
@@ -163,9 +171,9 @@
             <div class="control-group">
                 <label>
                     Длительность анимации (мс)
-                    <span class="value" id="loadAnimationDurationValue">4000</span>
+                    <span class="value" id="loadAnimationDurationValue">2000</span>
                 </label>
-                <input type="range" id="loadAnimationDuration" min="2000" max="8000" step="100" value="4000">
+                <input type="range" id="loadAnimationDuration" min="2000" max="8000" step="100" value="2000">
             </div>
             
             <div class="control-group">
@@ -187,6 +195,13 @@
         
         <div style="margin-top:20px;padding-top:20px;border-top:2px solid rgba(255,255,255,.2)">
             <h3 style="margin-bottom:15px;font-size:16px;font-weight:600">Настройки волн</h3>
+            
+            <div class="control-group">
+                <label style="display: flex; align-items: center; justify-content: space-between;">
+                    <span>Включить волны</span>
+                    <input type="checkbox" id="waveEnabled" style="width: auto; margin: 0;">
+                </label>
+            </div>
             
             <div class="control-group">
                 <label>
