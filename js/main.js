@@ -85,7 +85,7 @@ let CONFIG = {
     isLoadingAnimation: true, // Флаг активной анимации загрузки
     loadAnimationStartTime: null, // Время начала анимации
     loadAnimationDuration: savedConfig?.loadAnimationDuration ?? 4000, // Длительность анимации (4 секунды)
-    loadAnimationEasingCurve: savedConfig?.loadAnimationEasingCurve ?? { p1x: 0, p1y: 0, p2x: 0.58, p2y: 1 }, // Кривая Безье для управления скоростью (по умолчанию ease-out)
+    loadAnimationEasingCurve: savedConfig?.loadAnimationEasingCurve ?? { p1x: 0.42, p1y: 0, p2x: 0.58, p2y: 1 }, // Кривая Безье для управления скоростью (по умолчанию ease-in-out)
     // Параметры волны
     waveEnabled: false, // Флаг включения/выключения волны
     waveInterval: 8000, // Интервал между волнами (мс)
