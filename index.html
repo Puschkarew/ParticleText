@@ -79,6 +79,30 @@
         
         <div class="control-group">
             <label>
+                Яркость свечения
+                <span class="value" id="glowBrightnessValue">0%</span>
+            </label>
+            <input type="range" id="glowBrightness" min="0" max="100" step="1" value="0">
+        </div>
+        
+        <div class="control-group">
+            <label>
+                Радиус свечения
+                <span class="value" id="glowRadiusValue">2x</span>
+            </label>
+            <input type="range" id="glowRadius" min="1" max="50" step="1" value="2">
+        </div>
+        
+        <div class="control-group">
+            <label>
+                Свечение от скорости
+                <span class="value" id="velocityGlowMultiplierValue">50%</span>
+            </label>
+            <input type="range" id="velocityGlowMultiplier" min="0" max="200" step="5" value="50">
+        </div>
+        
+        <div class="control-group">
+            <label>
                 Максимальная разница размера
                 <span class="value" id="sizeVariationValue">50%</span>
             </label>

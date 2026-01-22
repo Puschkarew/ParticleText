@@ -63,24 +63,24 @@ function saveConfigToStorage() {
 const savedConfig = loadConfigFromStorage();
 
 let CONFIG = {
-    particleCount: 9500,
-    outsideParticleCount: 50, // Количество частиц вне SVG формы (независимо от particleCount)
+    particleCount: 10000,
+    outsideParticleCount: 200, // Количество частиц вне SVG формы (независимо от particleCount)
     outsideInvisiblePercentage: 0, // Процент невидимых точек вне формы (0-100)
     sphereRadius: 3.0, // Увеличиваем размер текста
     forceStrength: 100.0,
-    interactionRadius: 2.0,
+    interactionRadius: 5.0,
     returnSpeed: 0.030, // Оставляем для обратной совместимости, но используем springConstant
-    springConstant: 1.00, // Жёсткость пружины (сила возврата)
-    damping: 0.85, // Коэффициент демпфирования (затухание колебаний, чем ближе к 1, тем сильнее затухание)
+    springConstant: 0.35, // Жёсткость пружины (сила возврата)
+    damping: 0.90, // Коэффициент демпфирования (затухание колебаний, чем ближе к 1, тем сильнее затухание)
     timeScale: 0.90, // Глобальный множитель скорости анимации (0.5 = в 2 раза медленнее)
-    pointSize: 3, // Размер точек
+    pointSize: 4, // Размер точек
     sizeVariation: 0.5, // Максимальная разница размера точек (50% по умолчанию)
-    autonomousMotionStrength: 0.02, // Сила автономного движения точек
+    autonomousMotionStrength: 0.04, // Сила автономного движения точек
     chaosAngle: 45, // Максимальный угол отклонения направления (градусы)
     chaosStrength: 0.8, // Сила хаотичности (0-1)
     tangentialForceRatio: 0.4, // Соотношение тангенциальной силы
     zAxisStrength: 0.6, // Сила Z-компоненты (глубина)
-    scrollSpreadForce: 50, // Сила разлёта при скролле
+    scrollSpreadForce: 75, // Сила разлёта при скролле
     scrollDepth: 300, // Глубина скролла (vh) - скрыт в UI
     isLoadingAnimation: true, // Флаг активной анимации загрузки
     loadAnimationStartTime: null, // Время начала анимации
@@ -97,12 +97,16 @@ let CONFIG = {
     lastWaveTime: null, // Время последней волны
     waves: [], // Массив активных волн: { radius: number, startTime: number, id: number }
     maxBrightness: 1.0, // Максимальная яркость точек (0-1, где 1.0 = 100% белый цвет)
-    depthDarkeningStrength: 1.0, // Сила затемнения по глубине (0 = нет эффекта, 1 = максимум)
+    depthDarkeningStrength: 1.85, // Сила затемнения по глубине (0 = нет эффекта, 1 = максимум)
+    // Параметры свечения точек
+    glowBrightness: 0.19, // Яркость свечения (0 = нет свечения, 1 = максимум)
+    glowRadius: 50.0, // Радиус свечения (прямой множитель размера, 1-50)
+    velocityGlowMultiplier: 0.10, // Множитель свечения от скорости движения точки (0 = нет эффекта, 2 = сильный эффект)
     // Параметры взрыва по клику
     explosionEnabled: true, // Флаг включения/выключения взрыва
     explosionForce: 10.0, // Сила разлёта (дальность)
-    explosionSpeed: 0.4, // Скорость разлёта (множитель, 0.1-2.0)
-    explosionReturnDelay: 1500, // Задержка перед возвратом точек (мс) - чем больше, тем дольше точки остаются разлетевшимися
+    explosionSpeed: 0.20, // Скорость разлёта (множитель, 0.1-2.0)
+    explosionReturnDelay: 1200, // Задержка перед возвратом точек (мс) - чем больше, тем дольше точки остаются разлетевшимися
     explosionGlowIntensity: 0.8, // Интенсивность подсветки (0-1)
     explosionGlowDuration: 500, // Длительность подсветки (мс)
     explosions: [] // Массив активных взрывов: { position: Vector3, startTime: number, id: number }
@@ -120,21 +124,57 @@ function createCircleTexture(size = 64) {
     const ctx = canvas.getContext('2d');
     
     const center = size / 2;
+    // Уменьшаем радиус чтобы создать прозрачную границу - это предотвращает артефакты
+    // при масштабировании координат в шейдере (гипотеза F)
+    const radius = center - 2;
     
-    
-    // Очищаем canvas прозрачным цветом (гипотеза A, E)
+    // Очищаем canvas прозрачным цветом
     ctx.clearRect(0, 0, size, size);
     
-    // Сплошной белый круг без градиента
+    // Сплошной белый круг с уменьшенным радиусом
     ctx.fillStyle = 'rgba(255, 255, 255, 1)';
     ctx.beginPath();
-    ctx.arc(center, center, center, 0, Math.PI * 2);
+    ctx.arc(center, center, radius, 0, Math.PI * 2);
     ctx.fill();
     
     
     const texture = new THREE.CanvasTexture(canvas);
     // Устанавливаем premultipliedAlpha в false для правильного смешивания прозрачности
-    // Это предотвращает чёрную обводку при наложении точек
+    texture.premultipliedAlpha = false;
+    return texture;
+}
+
+// ========== СОЗДАНИЕ ТЕКСТУРЫ ТОЛЬКО СВЕЧЕНИЯ (без ядра) ==========
+function createGlowTexture(size = 128) {
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    
+    const center = size / 2;
+    
+    // Очищаем canvas прозрачным цветом
+    ctx.clearRect(0, 0, size, size);
+    
+    // Создаём радиальный градиент ТОЛЬКО для glow (без твёрдого ядра)
+    // Свечение начинается от центра и плавно затухает к краям
+    const gradient = ctx.createRadialGradient(center, center, 0, center, center, center);
+    
+    // Контрастное свечение - очень яркое в центре, быстро затухает
+    gradient.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
+    gradient.addColorStop(0.1, 'rgba(255, 255, 255, 0.8)');
+    gradient.addColorStop(0.25, 'rgba(255, 255, 255, 0.5)');
+    gradient.addColorStop(0.4, 'rgba(255, 255, 255, 0.25)');
+    gradient.addColorStop(0.6, 'rgba(255, 255, 255, 0.1)');
+    gradient.addColorStop(0.8, 'rgba(255, 255, 255, 0.03)');
+    gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(center, center, center, 0, Math.PI * 2);
+    ctx.fill();
+    
+    const texture = new THREE.CanvasTexture(canvas);
     texture.premultipliedAlpha = false;
     return texture;
 }
@@ -181,6 +221,7 @@ let velocities = new Float32Array(CONFIG.particleCount * 3);
 let colors = new Float32Array(CONFIG.particleCount * 3); // Цвета для каждой точки (RGB)
 let sizes = new Float32Array(CONFIG.particleCount); // Индивидуальные размеры каждой точки
 let baseSizes = new Float32Array(CONFIG.particleCount); // Базовые размеры точек (без эффектов волны)
+let glows = new Float32Array(CONFIG.particleCount); // Интенсивность glow эффекта для каждой точки (0-1)
 let explosionGlowEndTimes = new Float32Array(CONFIG.particleCount); // Время окончания подсветки взрыва для каждой точки
 let explosionReturnTimes = new Float32Array(CONFIG.particleCount); // Время начала возврата после взрыва для каждой точки
 let points = null;
@@ -189,6 +230,7 @@ let cloudCenter = new THREE.Vector3(0, 0, 0); // Центр облака час�
 let totalParticleCount = CONFIG.particleCount; // Общее количество точек (внутри + снаружи SVG)
 
 const circleTexture = createCircleTexture(64);
+const glowTexture = createGlowTexture(128);
 
 // Функция генерации размеров частиц
 function generateParticleSizes() {
@@ -216,32 +258,78 @@ function generateParticleSizes() {
 generateParticleSizes();
 
 
-// Вершинный шейдер для точек с поддержкой индивидуальных размеров
+// Вершинный шейдер для точек с поддержкой индивидуальных размеров и glow
 const vertexShader = `
     attribute float size;
     attribute vec3 color;
+    attribute float glow;
     uniform float sizeScale;
+    uniform float glowRadiusMultiplier;
     varying vec3 vColor;
+    varying float vGlow;
     
     void main() {
         vColor = color;
+        vGlow = glow;
         vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
         
         // Для ортографической камеры используем простую формулу
         // sizeScale уже содержит правильный масштаб для viewport
-        gl_PointSize = size * sizeScale;
+        // Увеличиваем размер точки при glow для создания ореола (радиус контролируется glowRadiusMultiplier)
+        float glowSize = 1.0 + glow * glowRadiusMultiplier;
+        gl_PointSize = size * sizeScale * glowSize;
         gl_Position = projectionMatrix * mvPosition;
     }
 `;
 
-// Фрагментный шейдер для точек с поддержкой текстуры и цветов
+// Фрагментный шейдер для точек с поддержкой текстуры, цветов и glow эффекта
 const fragmentShader = `
     uniform sampler2D pointTexture;
+    uniform sampler2D glowTexture;
+    uniform float glowRadiusMultiplier;
+    uniform float glowBrightnessMultiplier;
     varying vec3 vColor;
+    varying float vGlow;
     
     void main() {
-        vec4 textureColor = texture2D(pointTexture, gl_PointCoord);
-        gl_FragColor = vec4(vColor * textureColor.rgb, textureColor.a);
+        // Масштабируем координаты для ядра точки (оно меньше из-за увеличенного размера при glow)
+        // Используем glowRadiusMultiplier для согласованности с вершинным шейдером
+        float coreScale = 1.0 + vGlow * glowRadiusMultiplier;
+        
+        // Центрируем и масштабируем координаты для ядра
+        vec2 coreCoord = (gl_PointCoord - 0.5) * coreScale + 0.5;
+        
+        // Вычисляем расстояние от центра для определения видимости ядра
+        // Используем smoothstep для плавного затухания вместо ClampToEdge (гипотеза H)
+        vec2 centered = coreCoord - 0.5;
+        float dist = length(centered) * 2.0; // 0 в центре, 1 на краях
+        
+        // Плавное затухание ядра к краям (от 0.9 до 1.0)
+        float coreMask = 1.0 - smoothstep(0.9, 1.0, dist);
+        
+        // Получаем цвет glow (на полных координатах точки)
+        vec4 glowColor = texture2D(glowTexture, gl_PointCoord);
+        
+        // Получаем цвет ядра только если координаты в допустимых пределах
+        vec4 coreColor = vec4(0.0);
+        if (coreCoord.x >= 0.0 && coreCoord.x <= 1.0 && coreCoord.y >= 0.0 && coreCoord.y <= 1.0) {
+            coreColor = texture2D(pointTexture, coreCoord);
+        }
+        
+        // Применяем маску затухания к ядру
+        coreColor.a *= coreMask;
+        
+        // Простое аддитивное комбинирование (яркость контролируется glowBrightnessMultiplier)
+        vec3 glowContrib = glowColor.rgb * vGlow * glowBrightnessMultiplier;
+        vec3 coreContrib = coreColor.rgb * coreColor.a;
+        
+        // Финальный цвет = ядро + glow
+        vec3 finalColor = coreContrib + glowContrib;
+        
+        // Альфа: максимум из ядра и glow
+        float finalAlpha = max(coreColor.a, glowColor.a * vGlow);
+        
+        gl_FragColor = vec4(vColor * finalColor, finalAlpha);
     }
 `;
 
@@ -261,7 +349,10 @@ const sizeScale = calculateSizeScale();
 const material = new THREE.ShaderMaterial({
     uniforms: {
         pointTexture: { value: circleTexture },
-        sizeScale: { value: sizeScale }
+        glowTexture: { value: glowTexture },
+        sizeScale: { value: sizeScale },
+        glowRadiusMultiplier: { value: CONFIG.glowRadius }, // Прямой множитель радиуса свечения
+        glowBrightnessMultiplier: { value: 1.5 } // Множитель яркости свечения
     },
     vertexShader: vertexShader,
     fragmentShader: fragmentShader,
@@ -973,12 +1064,18 @@ async function generateParticlesFromSVG() {
     
     // Обновляем geometry, если она уже создана (для постепенного добавления точек)
     if (geometry && points) {
+        // Убеждаемся, что массив glows имеет правильный размер
+        if (glows.length !== totalParticleCount) {
+            glows = new Float32Array(totalParticleCount);
+        }
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
         geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('glow', new THREE.BufferAttribute(glows, 1));
         geometry.attributes.position.needsUpdate = true;
         geometry.attributes.color.needsUpdate = true;
         geometry.attributes.size.needsUpdate = true;
+        geometry.attributes.glow.needsUpdate = true;
     }
     
     // Очищаем временный mesh
@@ -1043,19 +1140,27 @@ async function recreateParticles() {
     // Создаем новую геометрию с правильным количеством точек
     geometry = new THREE.BufferGeometry();
     
+    // Убеждаемся, что массив glows имеет правильный размер
+    if (glows.length !== totalParticleCount) {
+        glows = new Float32Array(totalParticleCount);
+    }
+    
     // Создаем новые буферы с точно нужным количеством точек
     const positionAttr = new THREE.BufferAttribute(positions, 3);
     const colorAttr = new THREE.BufferAttribute(colors, 3);
     const sizeAttr = new THREE.BufferAttribute(sizes, 1);
+    const glowAttr = new THREE.BufferAttribute(glows, 1);
     
     // Явно помечаем атрибуты для обновления
     positionAttr.needsUpdate = true;
     colorAttr.needsUpdate = true;
     sizeAttr.needsUpdate = true;
+    glowAttr.needsUpdate = true;
     
     geometry.setAttribute('position', positionAttr);
     geometry.setAttribute('color', colorAttr);
     geometry.setAttribute('size', sizeAttr);
+    geometry.setAttribute('glow', glowAttr);
     
     // Убеждаемся, что геометрия знает о количестве вершин
     geometry.setDrawRange(0, totalParticleCount);
@@ -1127,9 +1232,14 @@ async function scaleSVGObject(newSize) {
     }
     
     geometry = new THREE.BufferGeometry();
+    // Убеждаемся, что массив glows имеет правильный размер
+    if (glows.length !== totalParticleCount) {
+        glows = new Float32Array(totalParticleCount);
+    }
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+    geometry.setAttribute('glow', new THREE.BufferAttribute(glows, 1));
     
     points = new THREE.Points(geometry, material);
     scene.add(points);
@@ -1145,9 +1255,14 @@ let isInitialized = false;
         
         // Создаем geometry с текущими массивами (включая точки снаружи, если они уже добавлены)
         geometry = new THREE.BufferGeometry();
+        // Убеждаемся, что массив glows имеет правильный размер
+        if (glows.length !== totalParticleCount) {
+            glows = new Float32Array(totalParticleCount);
+        }
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
         geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('glow', new THREE.BufferAttribute(glows, 1));
         points = new THREE.Points(geometry, material);
         scene.add(points);
         isInitialized = true;
@@ -2044,6 +2159,25 @@ function updatePhysics() {
                 }
             }
             
+            // Вычисляем glow эффект на основе скорости движения точки
+            let particleGlow = CONFIG.glowBrightness;
+            if (CONFIG.velocityGlowMultiplier > 0) {
+                // Вычисляем магнитуду скорости точки
+                const vx = velocities[i3];
+                const vy = velocities[i3 + 1];
+                const vz = velocities[i3 + 2];
+                const velocityMag = Math.sqrt(vx * vx + vy * vy + vz * vz);
+                
+                // Добавляем свечение от скорости (velocityMag ~0-1, но может быть больше)
+                particleGlow += velocityMag * CONFIG.velocityGlowMultiplier;
+            }
+            
+            // Ограничиваем glow до 1.0 и записываем в массив
+            particleGlow = Math.min(particleGlow, 1.0);
+            if (i < glows.length) {
+                glows[i] = particleGlow;
+            }
+            
             // Ограничиваем финальную яркость до 1.0
             finalBrightness = Math.min(finalBrightness, 1.0);
             
@@ -2071,6 +2205,9 @@ function updatePhysics() {
     }
     if (geometry.attributes.size) {
         geometry.attributes.size.needsUpdate = true;
+    }
+    if (geometry.attributes.glow) {
+        geometry.attributes.glow.needsUpdate = true;
     }
 }
 
@@ -2103,8 +2240,18 @@ function setupControl(id, configKey, valueId) {
         // Преобразование для waveForce: новое значение (0-2) -> старое значение (0-0.002)
         if (id === 'waveForce') {
             CONFIG[configKey] = value / 1000;
-        } else if (id === 'maxBrightness' || id === 'depthDarkeningStrength') {
+        } else if (id === 'maxBrightness' || id === 'depthDarkeningStrength' || id === 'glowBrightness') {
             // Преобразование для процентных значений: слайдер (0-100) -> CONFIG (0-1.0)
+            CONFIG[configKey] = value / 100;
+        } else if (id === 'glowRadius') {
+            // Радиус свечения: прямой множитель (1-50)
+            CONFIG[configKey] = value;
+            // Обновляем uniform в шейдере
+            if (material && material.uniforms) {
+                material.uniforms.glowRadiusMultiplier.value = CONFIG.glowRadius;
+            }
+        } else if (id === 'velocityGlowMultiplier') {
+            // Преобразование: слайдер (0-200) -> CONFIG (0-2.0)
             CONFIG[configKey] = value / 100;
         } else {
             CONFIG[configKey] = value;
@@ -2113,8 +2260,10 @@ function setupControl(id, configKey, valueId) {
         // Форматирование значения в зависимости от параметра
         if (id === 'sizeVariation') {
             valueDisplay.textContent = Math.round(value * 100) + '%';
-        } else if (id === 'maxBrightness' || id === 'depthDarkeningStrength') {
+        } else if (id === 'maxBrightness' || id === 'depthDarkeningStrength' || id === 'glowBrightness' || id === 'velocityGlowMultiplier') {
             valueDisplay.textContent = Math.round(value) + '%';
+        } else if (id === 'glowRadius') {
+            valueDisplay.textContent = Math.round(value) + 'x';
         } else if (id === 'waveInterval') {
             valueDisplay.textContent = value.toFixed(0) + ' мс';
         } else if (id === 'waveForce') {
@@ -2175,6 +2324,9 @@ if (waveEnabledCheckbox) {
 setupControl('pointSize', 'pointSize', 'pointSizeValue');
 setupControl('maxBrightness', 'maxBrightness', 'maxBrightnessValue');
 setupControl('depthDarkeningStrength', 'depthDarkeningStrength', 'depthDarkeningStrengthValue');
+setupControl('glowBrightness', 'glowBrightness', 'glowBrightnessValue');
+setupControl('glowRadius', 'glowRadius', 'glowRadiusValue');
+setupControl('velocityGlowMultiplier', 'velocityGlowMultiplier', 'velocityGlowMultiplierValue');
 setupControl('sizeVariation', 'sizeVariation', 'sizeVariationValue');
 setupControl('forceStrength', 'forceStrength', 'forceStrengthValue');
 setupControl('interactionRadius', 'interactionRadius', 'interactionRadiusValue');
