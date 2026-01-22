@@ -149,37 +149,52 @@ function createCircleTexture(size = 64) {
 }
 
 // ========== СОЗДАНИЕ ТЕКСТУРЫ ТОЛЬКО СВЕЧЕНИЯ (без ядра) ==========
-function createGlowTexture(size = 128) {
+function createGlowTexture(size = 256) {
     const canvas = document.createElement('canvas');
     canvas.width = size;
     canvas.height = size;
     const ctx = canvas.getContext('2d');
     
-    const center = size / 2;
+    const center = (size - 1) / 2;
+    const radius = size / 2;
+    const invRadius = 1 / radius;
+    const falloff = 2.2;
+    const ditherStrength = 1 / 255;
     
-    // Очищаем canvas прозрачным цветом
-    ctx.clearRect(0, 0, size, size);
+    const imageData = ctx.createImageData(size, size);
+    const data = imageData.data;
     
-    // Создаём радиальный градиент ТОЛЬКО для glow (без твёрдого ядра)
-    // Свечение начинается от центра и плавно затухает к краям
-    const gradient = ctx.createRadialGradient(center, center, 0, center, center, center);
+    for (let y = 0; y < size; y++) {
+        const dy = (y + 0.5 - center) * invRadius;
+        for (let x = 0; x < size; x++) {
+            const dx = (x + 0.5 - center) * invRadius;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            let alpha = 0;
+            
+            if (dist < 1) {
+                alpha = Math.pow(1 - dist, falloff);
+                const seed = (x * 374761393 + y * 668265263) >>> 0;
+                let hashed = (seed ^ (seed >>> 13)) >>> 0;
+                hashed = (hashed * 1274126177) >>> 0;
+                const rand = (hashed & 255) / 255;
+                alpha = Math.min(1, Math.max(0, alpha + (rand - 0.5) * ditherStrength));
+            }
+            
+            const idx = (y * size + x) * 4;
+            data[idx] = 255;
+            data[idx + 1] = 255;
+            data[idx + 2] = 255;
+            data[idx + 3] = Math.round(alpha * 255);
+        }
+    }
     
-    // Контрастное свечение - очень яркое в центре, быстро затухает
-    gradient.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
-    gradient.addColorStop(0.1, 'rgba(255, 255, 255, 0.8)');
-    gradient.addColorStop(0.25, 'rgba(255, 255, 255, 0.5)');
-    gradient.addColorStop(0.4, 'rgba(255, 255, 255, 0.25)');
-    gradient.addColorStop(0.6, 'rgba(255, 255, 255, 0.1)');
-    gradient.addColorStop(0.8, 'rgba(255, 255, 255, 0.03)');
-    gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-    
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.arc(center, center, center, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.putImageData(imageData, 0, 0);
     
     const texture = new THREE.CanvasTexture(canvas);
     texture.premultipliedAlpha = false;
+    texture.generateMipmaps = false;
+    texture.minFilter = THREE.LinearFilter;
+    texture.magFilter = THREE.LinearFilter;
     return texture;
 }
 
@@ -294,7 +309,7 @@ let cloudCenter = new THREE.Vector3(0, 0, 0); // Центр облака час�
 let totalParticleCount = CONFIG.particleCount; // Общее количество точек (внутри + снаружи SVG)
 
 const circleTexture = createCircleTexture(64);
-const glowTexture = createGlowTexture(128);
+const glowTexture = createGlowTexture();
 
 // Функция генерации размеров частиц
 function generateParticleSizes() {
