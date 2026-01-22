@@ -227,6 +227,11 @@ let baseSizes = new Float32Array(CONFIG.particleCount); // Базовые раз
 let glows = new Float32Array(CONFIG.particleCount); // Интенсивность glow эффекта для каждой точки (0-1)
 let explosionGlowEndTimes = new Float32Array(CONFIG.particleCount); // Время окончания подсветки взрыва для каждой точки
 let explosionReturnTimes = new Float32Array(CONFIG.particleCount); // Время начала возврата после взрыва для каждой точки
+let distanceBuffer = new Float32Array(CONFIG.particleCount); // Буфер расстояний для расчёта яркости без аллокаций
+let cachedGlowBrightness = CONFIG.glowBrightness;
+let cachedVelocityGlowMultiplier = CONFIG.velocityGlowMultiplier;
+let glowStaticNeedsUpdate = true;
+let wasWaveActive = false;
 let points = null;
 let svgGeometry = null;
 let cloudCenter = new THREE.Vector3(0, 0, 0); // Центр облака частиц
@@ -414,6 +419,9 @@ function getShapeVolumePoints(shapeGeometry, count, raycaster) {
     const points = [];
     const positions = shapeGeometry.attributes.position;
     const indices = shapeGeometry.index;
+    const tempEdge1 = new THREE.Vector3();
+    const tempEdge2 = new THREE.Vector3();
+    const tempNormal = new THREE.Vector3();
     
     // Получаем все вершины из геометрии текста
     const vertices = [];
@@ -442,9 +450,9 @@ function getShapeVolumePoints(shapeGeometry, count, raycaster) {
             const v3 = vertices[i3];
             
             // Вычисляем площадь треугольника
-            const edge1 = new THREE.Vector3().subVectors(v2, v1);
-            const edge2 = new THREE.Vector3().subVectors(v3, v1);
-            const area = edge1.cross(edge2).length() * 0.5;
+            tempEdge1.subVectors(v2, v1);
+            tempEdge2.subVectors(v3, v1);
+            const area = tempEdge1.cross(tempEdge2).length() * 0.5;
             
             // Игнорируем вырожденные треугольники (слишком маленькие)
             if (area > 0.0001) {
@@ -460,9 +468,9 @@ function getShapeVolumePoints(shapeGeometry, count, raycaster) {
             const v3 = vertices[i + 2];
             
             // Вычисляем площадь треугольника
-            const edge1 = new THREE.Vector3().subVectors(v2, v1);
-            const edge2 = new THREE.Vector3().subVectors(v3, v1);
-            const area = edge1.cross(edge2).length() * 0.5;
+            tempEdge1.subVectors(v2, v1);
+            tempEdge2.subVectors(v3, v1);
+            const area = tempEdge1.cross(tempEdge2).length() * 0.5;
             
             if (area > 0.0001) {
                 triangles.push({ v1, v2, v3, area });
@@ -499,9 +507,9 @@ function getShapeVolumePoints(shapeGeometry, count, raycaster) {
     
     for (const tri of triangles) {
         // Вычисляем нормаль треугольника
-        const edge1 = new THREE.Vector3().subVectors(tri.v2, tri.v1);
-        const edge2 = new THREE.Vector3().subVectors(tri.v3, tri.v1);
-        const normal = new THREE.Vector3().crossVectors(edge1, edge2);
+        tempEdge1.subVectors(tri.v2, tri.v1);
+        tempEdge2.subVectors(tri.v3, tri.v1);
+        const normal = tempNormal.crossVectors(tempEdge1, tempEdge2);
         
         // Используем только треугольники с нормалью, направленной вверх (Z > 0)
         // Это исключает внутренние грани отверстий
@@ -753,22 +761,37 @@ async function generateOutsidePointsAsync(svgMesh, raycaster, targetCount, viewp
             } else {
                 // Фильтруем точки для получения нужной плотности
                 const filteredOutsidePoints = [];
+                const outsideCount = outsidePoints.length;
+                const selected = new Uint8Array(outsideCount);
                 
                 // Оставляем каждую 5-ю точку (т.к. кандидатов в 5 раз больше)
-                for (let i = 0; i < outsidePoints.length; i += 5) {
+                for (let i = 0; i < outsideCount; i += 5) {
                     if (filteredOutsidePoints.length >= targetCount) break;
                     filteredOutsidePoints.push(outsidePoints[i]);
+                    selected[i] = 1;
                 }
                 
                 // Если не набрали достаточно точек, добавляем оставшиеся
-                if (filteredOutsidePoints.length < targetCount && outsidePoints.length > 0) {
+                if (filteredOutsidePoints.length < targetCount && outsideCount > 0) {
                     const remaining = targetCount - filteredOutsidePoints.length;
-                    for (let i = 0; i < remaining && i < outsidePoints.length; i++) {
-                        // Берем точки с шагом, чтобы равномерно распределить
-                        const step = Math.max(1, Math.floor(outsidePoints.length / remaining));
-                        const index = i * step;
-                        if (index < outsidePoints.length && !filteredOutsidePoints.includes(outsidePoints[index])) {
+                    const step = Math.max(1, Math.floor(outsideCount / remaining));
+                    
+                    let index = 0;
+                    while (filteredOutsidePoints.length < targetCount && index < outsideCount) {
+                        if (!selected[index]) {
+                            selected[index] = 1;
                             filteredOutsidePoints.push(outsidePoints[index]);
+                        }
+                        index += step;
+                    }
+                    
+                    // Fallback: добираем точки линейно, если шаг дал дубликаты
+                    if (filteredOutsidePoints.length < targetCount) {
+                        for (let i = 0; i < outsideCount && filteredOutsidePoints.length < targetCount; i++) {
+                            if (!selected[i]) {
+                                selected[i] = 1;
+                                filteredOutsidePoints.push(outsidePoints[i]);
+                            }
                         }
                     }
                 }
@@ -958,6 +981,7 @@ async function generateParticlesFromSVG() {
     const newBaseSizes = new Float32Array(totalParticleCount);
     const newExplosionGlowEndTimes = new Float32Array(totalParticleCount);
     const newExplosionReturnTimes = new Float32Array(totalParticleCount);
+    const newDistanceBuffer = new Float32Array(totalParticleCount);
     
     // Копируем существующие точки (внутри SVG) из временных массивов
     const pointsToCopy = Math.min(CONFIG.particleCount, tempPositions.length / 3);
@@ -1066,17 +1090,19 @@ async function generateParticlesFromSVG() {
     baseSizes = newBaseSizes;
     explosionGlowEndTimes = newExplosionGlowEndTimes;
     explosionReturnTimes = newExplosionReturnTimes;
+    distanceBuffer = newDistanceBuffer;
     
     // Обновляем geometry, если она уже создана (для постепенного добавления точек)
     if (geometry && points) {
         // Убеждаемся, что массив glows имеет правильный размер
         if (glows.length !== totalParticleCount) {
             glows = new Float32Array(totalParticleCount);
+            glowStaticNeedsUpdate = true;
         }
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
-        geometry.setAttribute('glow', new THREE.BufferAttribute(glows, 1));
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3).setUsage(THREE.DynamicDrawUsage));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3).setUsage(THREE.DynamicDrawUsage));
+        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1).setUsage(THREE.DynamicDrawUsage));
+        geometry.setAttribute('glow', new THREE.BufferAttribute(glows, 1).setUsage(THREE.DynamicDrawUsage));
         geometry.attributes.position.needsUpdate = true;
         geometry.attributes.color.needsUpdate = true;
         geometry.attributes.size.needsUpdate = true;
@@ -1148,13 +1174,14 @@ async function recreateParticles() {
     // Убеждаемся, что массив glows имеет правильный размер
     if (glows.length !== totalParticleCount) {
         glows = new Float32Array(totalParticleCount);
+        glowStaticNeedsUpdate = true;
     }
     
     // Создаем новые буферы с точно нужным количеством точек
-    const positionAttr = new THREE.BufferAttribute(positions, 3);
-    const colorAttr = new THREE.BufferAttribute(colors, 3);
-    const sizeAttr = new THREE.BufferAttribute(sizes, 1);
-    const glowAttr = new THREE.BufferAttribute(glows, 1);
+    const positionAttr = new THREE.BufferAttribute(positions, 3).setUsage(THREE.DynamicDrawUsage);
+    const colorAttr = new THREE.BufferAttribute(colors, 3).setUsage(THREE.DynamicDrawUsage);
+    const sizeAttr = new THREE.BufferAttribute(sizes, 1).setUsage(THREE.DynamicDrawUsage);
+    const glowAttr = new THREE.BufferAttribute(glows, 1).setUsage(THREE.DynamicDrawUsage);
     
     // Явно помечаем атрибуты для обновления
     positionAttr.needsUpdate = true;
@@ -1242,11 +1269,12 @@ async function scaleSVGObject(newSize) {
     // Убеждаемся, что массив glows имеет правильный размер
     if (glows.length !== totalParticleCount) {
         glows = new Float32Array(totalParticleCount);
+        glowStaticNeedsUpdate = true;
     }
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
-    geometry.setAttribute('glow', new THREE.BufferAttribute(glows, 1));
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3).setUsage(THREE.DynamicDrawUsage));
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3).setUsage(THREE.DynamicDrawUsage));
+    geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1).setUsage(THREE.DynamicDrawUsage));
+    geometry.setAttribute('glow', new THREE.BufferAttribute(glows, 1).setUsage(THREE.DynamicDrawUsage));
     
     points = new THREE.Points(geometry, material);
     scene.add(points);
@@ -1266,10 +1294,10 @@ let isInitialized = false;
         if (glows.length !== totalParticleCount) {
             glows = new Float32Array(totalParticleCount);
         }
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
-        geometry.setAttribute('glow', new THREE.BufferAttribute(glows, 1));
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3).setUsage(THREE.DynamicDrawUsage));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3).setUsage(THREE.DynamicDrawUsage));
+        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1).setUsage(THREE.DynamicDrawUsage));
+        geometry.setAttribute('glow', new THREE.BufferAttribute(glows, 1).setUsage(THREE.DynamicDrawUsage));
         points = new THREE.Points(geometry, material);
         scene.add(points);
         isInitialized = true;
@@ -1429,9 +1457,13 @@ const tempVector2 = new THREE.Vector3();
 const tempVector3 = new THREE.Vector3();
 const tempVector4 = new THREE.Vector3(); // Дополнительный временный вектор для вычислений
 const tempVector5 = new THREE.Vector3(); // Временный вектор для скролла
+const tempPerpendicular = new THREE.Vector3();
+const tempPerpendicular2 = new THREE.Vector3();
+const tempChaoticDirection = new THREE.Vector3();
+const waveCenter = new THREE.Vector3(0, 0, 0); // Центр экрана (используется для волн)
 
 // Функция для генерации случайного 3D направления с угловым отклонением
-function randomDirection3D(baseDirection, maxAngleDegrees, chaosStrength) {
+function randomDirection3D(baseDirection, maxAngleDegrees, chaosStrength, out = tempChaoticDirection) {
     // Преобразуем угол в радианы
     const maxAngle = (maxAngleDegrees * Math.PI) / 180;
     
@@ -1442,17 +1474,16 @@ function randomDirection3D(baseDirection, maxAngleDegrees, chaosStrength) {
     const azimuth = Math.random() * Math.PI * 2;
     
     // Генерируем случайный вектор перпендикулярный базовому направлению
-    // Используем метод генерации случайного вектора в сфере
-    let perpendicular = new THREE.Vector3();
+    // Используем переиспользуемые векторы для минимизации аллокаций
     if (Math.abs(baseDirection.x) < 0.9) {
-        perpendicular.set(1, 0, 0);
+        tempPerpendicular.set(1, 0, 0);
     } else {
-        perpendicular.set(0, 1, 0);
+        tempPerpendicular.set(0, 1, 0);
     }
-    perpendicular.crossVectors(baseDirection, perpendicular).normalize();
+    tempPerpendicular.crossVectors(baseDirection, tempPerpendicular).normalize();
     
     // Создаём второй перпендикулярный вектор
-    const perpendicular2 = new THREE.Vector3().crossVectors(baseDirection, perpendicular).normalize();
+    tempPerpendicular2.crossVectors(baseDirection, tempPerpendicular).normalize();
     
     // Генерируем случайное отклонение в плоскости, перпендикулярной базовому направлению
     const cosAngle = Math.cos(angle);
@@ -1461,14 +1492,13 @@ function randomDirection3D(baseDirection, maxAngleDegrees, chaosStrength) {
     const sinAzimuth = Math.sin(azimuth);
     
     // Комбинируем базовое направление с перпендикулярными компонентами
-    const result = new THREE.Vector3()
-        .copy(baseDirection)
+    out.copy(baseDirection)
         .multiplyScalar(cosAngle)
-        .addScaledVector(perpendicular, sinAngle * cosAzimuth)
-        .addScaledVector(perpendicular2, sinAngle * sinAzimuth)
+        .addScaledVector(tempPerpendicular, sinAngle * cosAzimuth)
+        .addScaledVector(tempPerpendicular2, sinAngle * sinAzimuth)
         .normalize();
     
-    return result;
+    return out;
 }
 
 // Функция вычисления значения кубической кривой Безье для easing
@@ -1510,11 +1540,11 @@ function updatePhysics() {
     mouseMovedThisFrame = false; // Сбрасываем флаг для следующего кадра
     
     const positionsArray = geometry.attributes.position.array;
-    
+    const nowDate = Date.now();
     
     // Логика анимации загрузки (пружинная физика)
     if (CONFIG.isLoadingAnimation && CONFIG.loadAnimationStartTime !== null) {
-        const elapsed = Date.now() - CONFIG.loadAnimationStartTime;
+        const elapsed = nowDate - CONFIG.loadAnimationStartTime;
         const progress = Math.min(1, elapsed / CONFIG.loadAnimationDuration);
         
         // Вычисляем значение кривой Безье для текущего прогресса
@@ -1606,7 +1636,7 @@ function updatePhysics() {
             CONFIG.isLoadingAnimation = false;
             // Инициализируем первую волну после завершения анимации появления
             if (CONFIG.waveEnabled && CONFIG.lastWaveTime === null) {
-                CONFIG.lastWaveTime = Date.now();
+                CONFIG.lastWaveTime = nowDate;
             }
         } else {
             return; // Пропускаем обычную физику во время анимации загрузки
@@ -1615,8 +1645,7 @@ function updatePhysics() {
     const colorsArray = geometry.attributes.color ? geometry.attributes.color.array : null;
     
     // ========== ЛОГИКА ВОЛНЫ ==========
-    const waveCenter = new THREE.Vector3(0, 0, 0); // Центр экрана
-    const now = Date.now();
+    const now = nowDate;
     
     // Вычисляем максимальный радиус волны (диагональ видимой области камеры)
     const viewportWidth = camera.right - camera.left;
@@ -1626,8 +1655,9 @@ function updatePhysics() {
     // Предвычисляем границы влияния всех волн для оптимизации
     let waveBoundsMin = Infinity;
     let waveBoundsMax = -Infinity;
-    const sigma = CONFIG.waveWidth / 2;
-    const cutoffDistance = 2 * sigma; // Максимальное расстояние влияния волны
+    const waveSigma = CONFIG.waveWidth / 2;
+    const waveCutoffDistance = 2 * waveSigma; // Максимальное расстояние влияния волны
+    const waveInvSigma = waveSigma > 0 ? 1.0 / waveSigma : 0;
     
     // Создаём новые волны и распространяем существующие
     if (CONFIG.waveEnabled && !CONFIG.isLoadingAnimation) {
@@ -1659,8 +1689,8 @@ function updatePhysics() {
             } else {
                 // Предвычисляем границы влияния для early exit оптимизации
                 const waveCenterRadius = wave.radius - CONFIG.waveWidth / 2;
-                const waveMinRadius = waveCenterRadius - cutoffDistance;
-                const waveMaxRadius = waveCenterRadius + cutoffDistance;
+                const waveMinRadius = waveCenterRadius - waveCutoffDistance;
+                const waveMaxRadius = waveCenterRadius + waveCutoffDistance;
                 waveBoundsMin = Math.min(waveBoundsMin, waveMinRadius);
                 waveBoundsMax = Math.max(waveBoundsMax, waveMaxRadius);
             }
@@ -1685,14 +1715,10 @@ function updatePhysics() {
         colorsCount
     );
     
-    // Определяем диапазон расстояний для нормализации
-    let minDistance = Infinity;
-    let maxDistance = -Infinity;
-    const distances = [];
+    if (!distanceBuffer || distanceBuffer.length < actualParticleCount) {
+        distanceBuffer = new Float32Array(actualParticleCount);
+    }
     
-    // Оптимизация: предвычисляем компоненты позиции камеры для избежания повторных обращений
-    const camX = camera.position.x;
-    const camY = camera.position.y;
     const camZ = camera.position.z;
     
     // Вычисляем глубину (только Z-расстояние от камеры)
@@ -1717,10 +1743,7 @@ function updatePhysics() {
         // Используем ТЕКУЩУЮ Z-позицию для эффекта глубины
         const dz = positionsArray[i3 + 2] - camZ;
         const distance = Math.abs(dz);
-        distances.push(distance);
-        // min/max больше не используются для расчёта яркости, но оставляем для логов
-        minDistance = Math.min(minDistance, distance);
-        maxDistance = Math.max(maxDistance, distance);
+        distanceBuffer[i] = distance;
     }
     
     // Используем фиксированный диапазон вместо динамического
@@ -1728,7 +1751,14 @@ function updatePhysics() {
     
     const speed = Math.sqrt(mouseVelocity.x * mouseVelocity.x + mouseVelocity.y * mouseVelocity.y);
     const forceMultiplier = Math.min(speed * CONFIG.forceStrength, CONFIG.forceStrength * 2);
+    const interactionRadiusSq = CONFIG.interactionRadius * CONFIG.interactionRadius;
+    const interactionActive = isPointerInsideCanvas && (isPointerDown || speed > 0.001);
+    const hasExplosions = CONFIG.explosionEnabled && CONFIG.explosions.length > 0;
+    const waveActive = CONFIG.waveEnabled && CONFIG.waves.length > 0;
+    const nowPerf = performance.now();
     
+    let sizesUpdated = false;
+    let glowsUpdated = false;
     
     for (let i = 0; i < actualParticleCount; i++) {
         const i3 = i * 3;
@@ -1740,75 +1770,74 @@ function updatePhysics() {
             positionsArray[i3 + 2]
         );
         
-        // Используем distance squared для оптимизации (избегаем sqrt до проверки радиуса)
-        const dx = positionsArray[i3] - mouse3D.x;
-        const dy = positionsArray[i3 + 1] - mouse3D.y;
-        const dz = positionsArray[i3 + 2] - mouse3D.z;
-        const distanceSq = dx * dx + dy * dy + dz * dz;
-        const interactionRadiusSq = CONFIG.interactionRadius * CONFIG.interactionRadius;
-        
-        // Кэшируем расстояние до центра волн для переиспользования (оптимизация)
-        let cachedWaveDistance = null;
-        
         // Проверяем, что курсор находится внутри канваса перед применением сил
-        if (isPointerInsideCanvas && distanceSq < interactionRadiusSq && (isPointerDown || speed > 0.001)) {
-            // Вычисляем расстояние только если частица в радиусе взаимодействия
-            const distance = Math.sqrt(distanceSq);
-            // Базовое направление от курсора к точке
-            const baseDirection = tempVector2.subVectors(tempVector, mouse3D).normalize();
+        if (interactionActive) {
+            // Используем distance squared для оптимизации (избегаем sqrt до проверки радиуса)
+            const dx = positionsArray[i3] - mouse3D.x;
+            const dy = positionsArray[i3 + 1] - mouse3D.y;
+            const dz = positionsArray[i3 + 2] - mouse3D.z;
+            const distanceSq = dx * dx + dy * dy + dz * dz;
             
-            // Применяем случайное угловое отклонение для создания хаотичности
-            const chaoticDirection = randomDirection3D(
-                baseDirection, 
-                CONFIG.chaosAngle, 
-                CONFIG.chaosStrength
-            );
-            
-            // Вычисляем тангенциальное направление (перпендикулярно радиус-вектору)
-            // Оптимизация: переиспользуем временные векторы вместо создания новых
-            // Используем векторное произведение для получения перпендикулярного вектора
-            let tangent = tempVector4.crossVectors(baseDirection, tempVector5.set(0, 0, 1));
-            if (tangent.length() < 0.1) {
-                // Если векторы коллинеарны, используем другой базовый вектор
-                tangent.crossVectors(baseDirection, tempVector5.set(1, 0, 0));
+            if (distanceSq < interactionRadiusSq) {
+                // Вычисляем расстояние только если частица в радиусе взаимодействия
+                const distance = Math.sqrt(distanceSq);
+                // Базовое направление от курсора к точке
+                const baseDirection = tempVector2.subVectors(tempVector, mouse3D).normalize();
+                
+                // Применяем случайное угловое отклонение для создания хаотичности
+                const chaoticDirection = randomDirection3D(
+                    baseDirection, 
+                    CONFIG.chaosAngle, 
+                    CONFIG.chaosStrength,
+                    tempChaoticDirection
+                );
+                
+                // Вычисляем тангенциальное направление (перпендикулярно радиус-вектору)
+                // Оптимизация: переиспользуем временные векторы вместо создания новых
+                // Используем векторное произведение для получения перпендикулярного вектора
+                let tangent = tempVector4.crossVectors(baseDirection, tempVector5.set(0, 0, 1));
+                if (tangent.length() < 0.1) {
+                    // Если векторы коллинеарны, используем другой базовый вектор
+                    tangent.crossVectors(baseDirection, tempVector5.set(1, 0, 0));
+                }
+                tangent.normalize();
+                
+                // Создаём второй перпендикулярный вектор для полного тангенциального пространства
+                // Используем tempVector3 для временного хранения (он не используется в этот момент)
+                const tangent2 = tempVector3.crossVectors(baseDirection, tangent).normalize();
+                
+                // Добавляем случайную тангенциальную компоненту в плоскости, перпендикулярной радиус-вектору
+                const tangentialAngle = Math.random() * Math.PI * 2;
+                const tangentX = Math.cos(tangentialAngle);
+                const tangentY = Math.sin(tangentialAngle);
+                tangent.multiplyScalar(tangentX).addScaledVector(tangent2, tangentY);
+                
+                // Вычисляем силу с расстоянием
+                const distanceFactor = 1 - distance / CONFIG.interactionRadius;
+                const baseForce = distanceFactor * forceMultiplier;
+                
+                // Добавляем случайную вариацию силы (0.7-1.3)
+                const forceVariation = 0.7 + Math.random() * 0.6;
+                const force = baseForce * forceVariation;
+                
+                // Комбинируем радиальную и тангенциальную силы
+                const radialForce = force * (1 - CONFIG.tangentialForceRatio);
+                const tangentialForce = force * CONFIG.tangentialForceRatio;
+                
+                // Добавляем случайную Z-компоненту для трёхмерности
+                const zComponent = (Math.random() - 0.5) * 2 * CONFIG.zAxisStrength;
+                
+                // Применяем силы к скорости
+                // Оптимизация: переиспользуем tempVector5 вместо создания нового Vector3
+                const finalDirection = tempVector5
+                    .copy(chaoticDirection)
+                    .multiplyScalar(radialForce)
+                    .addScaledVector(tangent, tangentialForce);
+                
+                velocities[i3] += finalDirection.x * 0.2 * CONFIG.timeScale;
+                velocities[i3 + 1] += finalDirection.y * 0.2 * CONFIG.timeScale;
+                velocities[i3 + 2] += (finalDirection.z + zComponent) * 0.2 * CONFIG.timeScale;
             }
-            tangent.normalize();
-            
-            // Создаём второй перпендикулярный вектор для полного тангенциального пространства
-            // Используем tempVector3 для временного хранения (он не используется в этот момент)
-            const tangent2 = tempVector3.crossVectors(baseDirection, tangent).normalize();
-            
-            // Добавляем случайную тангенциальную компоненту в плоскости, перпендикулярной радиус-вектору
-            const tangentialAngle = Math.random() * Math.PI * 2;
-            const tangentX = Math.cos(tangentialAngle);
-            const tangentY = Math.sin(tangentialAngle);
-            tangent.multiplyScalar(tangentX).addScaledVector(tangent2, tangentY);
-            
-            // Вычисляем силу с расстоянием
-            const distanceFactor = 1 - distance / CONFIG.interactionRadius;
-            const baseForce = distanceFactor * forceMultiplier;
-            
-            // Добавляем случайную вариацию силы (0.7-1.3)
-            const forceVariation = 0.7 + Math.random() * 0.6;
-            const force = baseForce * forceVariation;
-            
-            // Комбинируем радиальную и тангенциальную силы
-            const radialForce = force * (1 - CONFIG.tangentialForceRatio);
-            const tangentialForce = force * CONFIG.tangentialForceRatio;
-            
-            // Добавляем случайную Z-компоненту для трёхмерности
-            const zComponent = (Math.random() - 0.5) * 2 * CONFIG.zAxisStrength;
-            
-            // Применяем силы к скорости
-            // Оптимизация: переиспользуем tempVector5 вместо создания нового Vector3
-            const finalDirection = tempVector5
-                .copy(chaoticDirection)
-                .multiplyScalar(radialForce)
-                .addScaledVector(tangent, tangentialForce);
-            
-            velocities[i3] += finalDirection.x * 0.2 * CONFIG.timeScale;
-            velocities[i3 + 1] += finalDirection.y * 0.2 * CONFIG.timeScale;
-            velocities[i3 + 2] += (finalDirection.z + zComponent) * 0.2 * CONFIG.timeScale;
         }
         
         // Автономное движение - плавные случайные силы (применяются не каждый кадр для плавности)
@@ -1822,7 +1851,7 @@ function updatePhysics() {
         
         // ========== ВОЗДЕЙСТВИЕ ВЗРЫВА ==========
         // Взрыв затрагивает ВСЕ точки и использует scrollDirections для 3D разлёта
-        if (CONFIG.explosionEnabled && CONFIG.explosions.length > 0) {
+        if (hasExplosions) {
             for (const explosion of CONFIG.explosions) {
                 if (explosion.applied) continue; // Пропускаем уже применённые взрывы
                 
@@ -1845,13 +1874,13 @@ function updatePhysics() {
                 velocities[i3 + 2] += (expDirZ + randZ) * impulseStrength;
                 
                 // Устанавливаем время начала возврата (задержка перед возвратом)
-                const returnTime = performance.now() + CONFIG.explosionReturnDelay;
+                const returnTime = nowPerf + CONFIG.explosionReturnDelay;
                 if (i < explosionReturnTimes.length) {
                     explosionReturnTimes[i] = Math.max(explosionReturnTimes[i], returnTime);
                 }
                 
                 // Устанавливаем время окончания подсветки для этой точки
-                const glowEndTime = performance.now() + CONFIG.explosionGlowDuration;
+                const glowEndTime = nowPerf + CONFIG.explosionGlowDuration;
                 if (i < explosionGlowEndTimes.length) {
                     explosionGlowEndTimes[i] = Math.max(explosionGlowEndTimes[i], glowEndTime);
                 }
@@ -1861,13 +1890,13 @@ function updatePhysics() {
         // ========== ВОЗДЕЙСТВИЕ ВОЛНЫ ==========
         let totalWaveSizeFactor = 0; // Множитель размера от волн (накапливаем forceFactor)
         
-        if (CONFIG.waveEnabled && CONFIG.waves.length > 0) {
+        if (waveActive) {
             // Вычисляем расстояние от центра волны до частицы (distance squared для оптимизации)
             const dx = positionsArray[i3] - waveCenter.x;
             const dy = positionsArray[i3 + 1] - waveCenter.y;
             const dz = positionsArray[i3 + 2] - waveCenter.z;
             const waveDistanceSq = dx * dx + dy * dy + dz * dz;
-            cachedWaveDistance = Math.sqrt(waveDistanceSq);
+            const cachedWaveDistance = Math.sqrt(waveDistanceSq);
             
             // Early exit: проверяем, находится ли частица в зоне влияния любой волны
             // Используем предвычисленные границы для быстрой проверки
@@ -1886,11 +1915,6 @@ function updatePhysics() {
                 let totalWaveForceY = 0;
                 let totalWaveForceZ = 0;
                 
-                // Предвычисляем константы для оптимизации
-                const sigma = CONFIG.waveWidth / 2;
-                const cutoffDistance = 2 * sigma;
-                const invSigma = 1.0 / sigma;
-                
                 for (const wave of CONFIG.waves) {
                     // Центр волны (середина по толщине - максимальный эффект)
                     const waveCenterRadius = wave.radius - CONFIG.waveWidth / 2;
@@ -1898,10 +1922,10 @@ function updatePhysics() {
                     const distanceFromCenter = Math.abs(cachedWaveDistance - waveCenterRadius);
                     
                     // Проверяем, находится ли частица в зоне этой волны
-                    if (distanceFromCenter <= cutoffDistance) {
+                    if (distanceFromCenter <= waveCutoffDistance) {
                         // Гауссово распределение: exp(-falloff * (x/σ)²)
                         // Используем предвычисленные значения для оптимизации
-                        const normalizedDistance = distanceFromCenter * invSigma;
+                        const normalizedDistance = distanceFromCenter * waveInvSigma;
                         const normalizedDistanceSq = normalizedDistance * normalizedDistance;
                         const forceFactor = Math.exp(-CONFIG.waveForceFalloff * normalizedDistanceSq);
                         
@@ -1926,7 +1950,7 @@ function updatePhysics() {
         }
         
         // Обновляем размер точки на основе эффекта волны
-        if (i < baseSizes.length) {
+        if (waveActive && i < baseSizes.length) {
             const baseSize = baseSizes[i];
             
             if (baseSize === 0) {
@@ -1952,6 +1976,7 @@ function updatePhysics() {
                 const sizeMultiplier = 1.0 + totalWaveSizeFactor * 0.5;
                 sizes[i] = baseSize * sizeMultiplier;
             }
+            sizesUpdated = true;
         }
         
         positionsArray[i3] += velocities[i3] * CONFIG.timeScale;
@@ -1973,8 +1998,7 @@ function updatePhysics() {
         
         // Проверяем, не находится ли точка в состоянии "разлёта" после взрыва
         // Если время возврата ещё не наступило, не применяем силу пружины
-        const now = performance.now();
-        const isInExplosionFlight = i < explosionReturnTimes.length && explosionReturnTimes[i] > now;
+        const isInExplosionFlight = i < explosionReturnTimes.length && explosionReturnTimes[i] > nowPerf;
         
         if (isInExplosionFlight) {
             // Точка ещё в разлёте - применяем скорость разлёта и лёгкое демпфирование
@@ -2041,20 +2065,32 @@ function updatePhysics() {
         // Пропускаем здесь - сделаем в отдельном проходе после вычисления всех finalBrightness
     }
     
+    if (!waveActive && wasWaveActive && sizes && baseSizes) {
+        const count = Math.min(sizes.length, baseSizes.length);
+        if (count > 0) {
+            sizes.set(baseSizes.subarray(0, count), 0);
+            sizesUpdated = true;
+        }
+    }
+    wasWaveActive = waveActive;
+    
+    if (cachedGlowBrightness !== CONFIG.glowBrightness || cachedVelocityGlowMultiplier !== CONFIG.velocityGlowMultiplier) {
+        cachedGlowBrightness = CONFIG.glowBrightness;
+        cachedVelocityGlowMultiplier = CONFIG.velocityGlowMultiplier;
+        glowStaticNeedsUpdate = true;
+    }
+    const glowIsDynamic = CONFIG.velocityGlowMultiplier > 0;
+    
     // Обновляем цвета: базовая яркость с эффектом глубины
     // Точки дальше от камеры немного темнее (регулируется CONFIG.depthDarkeningStrength)
     if (colorsArray) {
+        const brightnessScale = CONFIG.maxBrightness;
         
-        // Первый проход: вычисляем базовую яркость с учётом глубины
-        let maxBaseBrightness = 0;
-        const baseBrightnesses = [];
-        const waveGlows = [];
-        
-        for (let i = 0; i < actualParticleCount && i < distances.length; i++) {
+        for (let i = 0; i < actualParticleCount && i < distanceBuffer.length; i++) {
             const i3 = i * 3;
             if (i3 + 2 >= colorsArray.length) break;
             
-            const distance = distances[i];
+            const distance = distanceBuffer[i];
             // Нормализуем расстояние от 0 до 1 относительно ФИКСИРОВАННОГО диапазона
             // Это гарантирует, что яркость каждой точки зависит только от её Z-позиции,
             // а не от позиций других точек
@@ -2074,11 +2110,9 @@ function updatePhysics() {
                 }
             }
             
-            baseBrightnesses.push(baseBrightness);
-            
             // Вычисляем свечение от волн ОТДЕЛЬНО (не добавляем к baseBrightness)
             let totalWaveGlow = 0;
-            if (CONFIG.waveEnabled && CONFIG.waves.length > 0) {
+            if (waveActive) {
                 const dx = positionsArray[i3] - waveCenter.x;
                 const dy = positionsArray[i3 + 1] - waveCenter.y;
                 const dz = positionsArray[i3 + 2] - waveCenter.z;
@@ -2086,11 +2120,6 @@ function updatePhysics() {
                 
                 // Early exit: используем те же границы, что и для физики
                 if (cachedWaveDistance >= waveBoundsMin && cachedWaveDistance <= waveBoundsMax) {
-                    // Предвычисляем константы для оптимизации
-                    const sigma = CONFIG.waveWidth / 2;
-                    const cutoffDistance = 2 * sigma;
-                    const invSigma = 1.0 / sigma;
-                    
                     for (const wave of CONFIG.waves) {
                         // Центр волны (середина по толщине - максимальный эффект)
                         const waveCenterRadius = wave.radius - CONFIG.waveWidth / 2;
@@ -2098,9 +2127,9 @@ function updatePhysics() {
                         const distanceFromCenter = Math.abs(cachedWaveDistance - waveCenterRadius);
                         
                         // Проверяем, находится ли частица в зоне этой волны
-                        if (distanceFromCenter <= cutoffDistance) {
+                        if (distanceFromCenter <= waveCutoffDistance) {
                             // Гауссово распределение: exp(-falloff * (x/σ)²)
-                            const normalizedDistance = distanceFromCenter * invSigma;
+                            const normalizedDistance = distanceFromCenter * waveInvSigma;
                             const normalizedDistanceSq = normalizedDistance * normalizedDistance;
                             const glowFactor = Math.exp(-CONFIG.waveForceFalloff * normalizedDistanceSq);
                             const waveGlow = CONFIG.waveGlowIntensity * glowFactor;
@@ -2114,30 +2143,6 @@ function updatePhysics() {
                     totalWaveGlow = Math.min(totalWaveGlow, CONFIG.waveGlowIntensity);
                 }
             }
-            waveGlows.push(totalWaveGlow);
-            
-            // Находим максимум БАЗОВОЙ яркости (без волны) только среди ВИДИМЫХ точек внутри SVG
-            // Исключаем точки вне SVG и невидимые точки
-            const isInsideSVG = i < CONFIG.particleCount;
-            const isVisible = !(i < baseSizes.length && baseSizes[i] === 0 && sizes[i] === 0);
-            
-            if (baseBrightness > maxBaseBrightness && isInsideSVG && isVisible) {
-                maxBaseBrightness = baseBrightness;
-            }
-        }
-        
-        // Второй проход: применяем яркость напрямую без динамической нормализации
-        // FIX: Убираем нормализацию через maxBaseBrightness, которая вызывала
-        // изменение яркости ВСЕХ точек при движении ЛЮБЫХ точек
-        // Теперь просто используем CONFIG.maxBrightness как множитель
-        const brightnessScale = CONFIG.maxBrightness;
-        
-        for (let i = 0; i < baseBrightnesses.length; i++) {
-            const i3 = i * 3;
-            if (i3 + 2 >= colorsArray.length) break;
-            
-            const baseBrightness = baseBrightnesses[i];
-            const waveGlow = waveGlows[i];
             
             // Масштабируем базовую яркость
             let scaledBrightness = baseBrightness * brightnessScale;
@@ -2150,15 +2155,14 @@ function updatePhysics() {
             }
             
             // ПОСЛЕ масштабирования и затемнения добавляем эффект волны
-            let finalBrightness = scaledBrightness + waveGlow;
+            let finalBrightness = scaledBrightness + totalWaveGlow;
             
             // Добавляем эффект подсветки от взрыва
             if (CONFIG.explosionEnabled && i < explosionGlowEndTimes.length) {
                 const glowEndTime = explosionGlowEndTimes[i];
-                const now = performance.now();
-                if (glowEndTime > now) {
+                if (glowEndTime > nowPerf) {
                     // Плавное затухание подсветки
-                    const remainingTime = glowEndTime - now;
+                    const remainingTime = glowEndTime - nowPerf;
                     const fadeFactor = remainingTime / CONFIG.explosionGlowDuration;
                     const explosionGlow = CONFIG.explosionGlowIntensity * fadeFactor;
                     finalBrightness += explosionGlow;
@@ -2166,8 +2170,8 @@ function updatePhysics() {
             }
             
             // Вычисляем glow эффект на основе скорости движения точки
-            let particleGlow = CONFIG.glowBrightness;
-            if (CONFIG.velocityGlowMultiplier > 0) {
+            if (glowIsDynamic) {
+                let particleGlow = CONFIG.glowBrightness;
                 // Вычисляем магнитуду скорости точки
                 const vx = velocities[i3];
                 const vy = velocities[i3 + 1];
@@ -2176,12 +2180,19 @@ function updatePhysics() {
                 
                 // Добавляем свечение от скорости (velocityMag ~0-1, но может быть больше)
                 particleGlow += velocityMag * CONFIG.velocityGlowMultiplier;
-            }
-            
-            // Ограничиваем glow до 1.0 и записываем в массив
-            particleGlow = Math.min(particleGlow, 1.0);
-            if (i < glows.length) {
-                glows[i] = particleGlow;
+                
+                // Ограничиваем glow до 1.0 и записываем в массив
+                particleGlow = Math.min(particleGlow, 1.0);
+                if (i < glows.length) {
+                    glows[i] = particleGlow;
+                }
+                glowsUpdated = true;
+            } else if (glowStaticNeedsUpdate) {
+                const particleGlow = Math.min(CONFIG.glowBrightness, 1.0);
+                if (i < glows.length) {
+                    glows[i] = particleGlow;
+                }
+                glowsUpdated = true;
             }
             
             // Ограничиваем финальную яркость до 1.0
@@ -2192,6 +2203,10 @@ function updatePhysics() {
             colorsArray[i3 + 2] = finalBrightness;
             
         }
+    }
+    
+    if (!glowIsDynamic && glowStaticNeedsUpdate) {
+        glowStaticNeedsUpdate = false;
     }
     
     // ========== ОЧИСТКА ВЗРЫВОВ ==========
@@ -2209,10 +2224,10 @@ function updatePhysics() {
     if (geometry.attributes.color) {
         geometry.attributes.color.needsUpdate = true;
     }
-    if (geometry.attributes.size) {
+    if (sizesUpdated && geometry.attributes.size) {
         geometry.attributes.size.needsUpdate = true;
     }
-    if (geometry.attributes.glow) {
+    if (glowsUpdated && geometry.attributes.glow) {
         geometry.attributes.glow.needsUpdate = true;
     }
 }
