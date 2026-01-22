@@ -102,6 +102,7 @@ let CONFIG = {
     glowBrightness: 0.19, // Яркость свечения (0 = нет свечения, 1 = максимум)
     glowRadius: 50.0, // Радиус свечения (прямой множитель размера, 1-50)
     velocityGlowMultiplier: 0.10, // Множитель свечения от скорости движения точки (0 = нет эффекта, 2 = сильный эффект)
+    glowMode: 'optimized', // Режим свечения: 'legacy' | 'optimized'
     // Параметры взрыва по клику
     explosionEnabled: true, // Флаг включения/выключения взрыва
     explosionForce: 10.0, // Сила разлёта (дальность)
@@ -185,6 +186,9 @@ function createGlowTexture(size = 128) {
 // ========== ИНИЦИАЛИЗАЦИЯ ==========
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x000000);
+const glowScene = new THREE.Scene();
+const compositeScene = new THREE.Scene();
+const compositeCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
 // Ортографическая камера для устранения перспективных искажений
 const viewSize = 20; // Размер видимой области
@@ -213,6 +217,54 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setClearColor(0x000000, 1);
 document.body.appendChild(renderer.domElement);
 
+let glowRenderTarget = null;
+let glowCompositeMaterial = null;
+let glowCompositeQuad = null;
+
+const getGlowRenderScale = () => {
+    const minDim = Math.min(window.innerWidth, window.innerHeight);
+    return minDim <= 700 ? GLOW_RENDER_SCALE_MOBILE : GLOW_RENDER_SCALE_DESKTOP;
+};
+
+const updateGlowRenderTargetSize = () => {
+    if (!glowRenderTarget) {
+        return;
+    }
+    const scale = getGlowRenderScale();
+    const pixelRatio = renderer.getPixelRatio();
+    const width = Math.max(1, Math.floor(window.innerWidth * pixelRatio * scale));
+    const height = Math.max(1, Math.floor(window.innerHeight * pixelRatio * scale));
+    glowRenderTarget.setSize(width, height);
+};
+
+const ensureGlowRenderTarget = () => {
+    if (!glowRenderTarget) {
+        glowRenderTarget = new THREE.WebGLRenderTarget(1, 1, {
+            minFilter: THREE.LinearFilter,
+            magFilter: THREE.LinearFilter,
+            format: THREE.RGBAFormat,
+            type: THREE.UnsignedByteType,
+            depthBuffer: false,
+            stencilBuffer: false
+        });
+    }
+    updateGlowRenderTargetSize();
+    if (!glowCompositeMaterial) {
+        glowCompositeMaterial = new THREE.MeshBasicMaterial({
+            map: glowRenderTarget.texture,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthTest: false,
+            depthWrite: false
+        });
+        glowCompositeQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), glowCompositeMaterial);
+        compositeScene.add(glowCompositeQuad);
+    } else {
+        glowCompositeMaterial.map = glowRenderTarget.texture;
+    }
+};
+
+
 // ========== ЧАСТИЦЫ ==========
 let geometry = null;
 let positions = new Float32Array(CONFIG.particleCount * 3);
@@ -233,6 +285,10 @@ let cachedVelocityGlowMultiplier = CONFIG.velocityGlowMultiplier;
 let glowStaticNeedsUpdate = true;
 let wasWaveActive = false;
 let points = null;
+let corePoints = null;
+let glowPoints = null;
+let legacyPoints = null;
+let benchmarkReady = false;
 let svgGeometry = null;
 let cloudCenter = new THREE.Vector3(0, 0, 0); // Центр облака частиц
 let totalParticleCount = CONFIG.particleCount; // Общее количество точек (внутри + снаружи SVG)
@@ -266,8 +322,13 @@ function generateParticleSizes() {
 generateParticleSizes();
 
 
-// Вершинный шейдер для точек с поддержкой индивидуальных размеров и glow
-const vertexShader = `
+const MAX_OPTIMIZED_GLOW_RADIUS = 20;
+const GLOW_RENDER_SCALE_DESKTOP = 0.5;
+const GLOW_RENDER_SCALE_MOBILE = 0.33;
+const GLOW_BRIGHTNESS_MULTIPLIER = 1.5;
+
+// Вершинный шейдер (legacy): ядро + glow в одном проходе
+const legacyVertexShader = `
     attribute float size;
     attribute vec3 color;
     attribute float glow;
@@ -290,8 +351,8 @@ const vertexShader = `
     }
 `;
 
-// Фрагментный шейдер для точек с поддержкой текстуры, цветов и glow эффекта
-const fragmentShader = `
+// Фрагментный шейдер (legacy): ядро + glow в одном проходе
+const legacyFragmentShader = `
     uniform sampler2D pointTexture;
     uniform sampler2D glowTexture;
     uniform float glowRadiusMultiplier;
@@ -341,6 +402,74 @@ const fragmentShader = `
     }
 `;
 
+// Вершинный шейдер (core-only): без увеличения радиуса
+const coreVertexShader = `
+    attribute float size;
+    attribute vec3 color;
+    uniform float sizeScale;
+    varying vec3 vColor;
+    
+    void main() {
+        vColor = color;
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = size * sizeScale;
+        gl_Position = projectionMatrix * mvPosition;
+    }
+`;
+
+// Фрагментный шейдер (core-only): только ядро точки
+const coreFragmentShader = `
+    uniform sampler2D pointTexture;
+    varying vec3 vColor;
+    
+    void main() {
+        vec2 centered = gl_PointCoord - 0.5;
+        float dist = length(centered) * 2.0; // 0 в центре, 1 на краях
+        float coreMask = 1.0 - smoothstep(0.9, 1.0, dist);
+        
+        vec4 coreColor = texture2D(pointTexture, gl_PointCoord);
+        coreColor.a *= coreMask;
+        
+        vec3 coreContrib = coreColor.rgb * coreColor.a;
+        gl_FragColor = vec4(vColor * coreContrib, coreColor.a);
+    }
+`;
+
+// Вершинный шейдер (glow-only): увеличенный радиус
+const glowVertexShader = `
+    attribute float size;
+    attribute vec3 color;
+    attribute float glow;
+    uniform float sizeScale;
+    uniform float glowRadiusMultiplier;
+    varying vec3 vColor;
+    varying float vGlow;
+    
+    void main() {
+        vColor = color;
+        vGlow = glow;
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        float glowSize = 1.0 + glow * glowRadiusMultiplier;
+        gl_PointSize = size * sizeScale * glowSize;
+        gl_Position = projectionMatrix * mvPosition;
+    }
+`;
+
+// Фрагментный шейдер (glow-only): только свечение
+const glowFragmentShader = `
+    uniform sampler2D glowTexture;
+    uniform float glowBrightnessMultiplier;
+    varying vec3 vColor;
+    varying float vGlow;
+    
+    void main() {
+        vec4 glowColor = texture2D(glowTexture, gl_PointCoord);
+        vec3 glowContrib = glowColor.rgb * vGlow * glowBrightnessMultiplier;
+        float finalAlpha = glowColor.a * vGlow;
+        gl_FragColor = vec4(vColor * glowContrib, finalAlpha);
+    }
+`;
+
 // Вычисляем масштаб размера для ортографической камеры
 // Для ортографической камеры размер точек должен быть простым
 // Используем коэффициент, который дает правильный размер
@@ -352,27 +481,123 @@ const calculateSizeScale = () => {
     return viewportHeight / 400.0;
 };
 
-const sizeScale = calculateSizeScale();
-
-const material = new THREE.ShaderMaterial({
+const legacyMaterial = new THREE.ShaderMaterial({
     uniforms: {
         pointTexture: { value: circleTexture },
         glowTexture: { value: glowTexture },
-        sizeScale: { value: sizeScale },
-        glowRadiusMultiplier: { value: CONFIG.glowRadius }, // Прямой множитель радиуса свечения
-        glowBrightnessMultiplier: { value: 1.5 } // Множитель яркости свечения
+        sizeScale: { value: calculateSizeScale() },
+        glowRadiusMultiplier: { value: CONFIG.glowRadius },
+        glowBrightnessMultiplier: { value: GLOW_BRIGHTNESS_MULTIPLIER }
     },
-    vertexShader: vertexShader,
-    fragmentShader: fragmentShader,
+    vertexShader: legacyVertexShader,
+    fragmentShader: legacyFragmentShader,
     transparent: true,
     depthWrite: false,
     blending: THREE.AdditiveBlending
 });
 
-// Обновляем sizeScale при изменении размера окна
-window.addEventListener('resize', () => {
-    material.uniforms.sizeScale.value = calculateSizeScale();
+const coreMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+        pointTexture: { value: circleTexture },
+        sizeScale: { value: calculateSizeScale() }
+    },
+    vertexShader: coreVertexShader,
+    fragmentShader: coreFragmentShader,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending
 });
+
+const glowMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+        glowTexture: { value: glowTexture },
+        sizeScale: { value: calculateSizeScale() },
+        glowRadiusMultiplier: { value: Math.min(CONFIG.glowRadius, MAX_OPTIMIZED_GLOW_RADIUS) },
+        glowBrightnessMultiplier: { value: GLOW_BRIGHTNESS_MULTIPLIER }
+    },
+    vertexShader: glowVertexShader,
+    fragmentShader: glowFragmentShader,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending
+});
+
+const updateSizeScale = () => {
+    const sizeScale = calculateSizeScale();
+    legacyMaterial.uniforms.sizeScale.value = sizeScale;
+    coreMaterial.uniforms.sizeScale.value = sizeScale;
+    glowMaterial.uniforms.sizeScale.value = sizeScale;
+};
+
+const updateGlowUniforms = () => {
+    legacyMaterial.uniforms.glowRadiusMultiplier.value = CONFIG.glowRadius;
+    glowMaterial.uniforms.glowRadiusMultiplier.value = Math.min(CONFIG.glowRadius, MAX_OPTIMIZED_GLOW_RADIUS);
+    legacyMaterial.uniforms.glowBrightnessMultiplier.value = GLOW_BRIGHTNESS_MULTIPLIER;
+    glowMaterial.uniforms.glowBrightnessMultiplier.value = GLOW_BRIGHTNESS_MULTIPLIER;
+};
+
+updateSizeScale();
+updateGlowUniforms();
+ensureGlowRenderTarget();
+
+function detachPoints(pointsObject) {
+    if (!pointsObject) {
+        return;
+    }
+    if (pointsObject.parent) {
+        pointsObject.parent.remove(pointsObject);
+    }
+    pointsObject.geometry = null;
+    pointsObject.material = null;
+}
+
+function applyGlowMode(mode) {
+    CONFIG.glowMode = mode;
+    if (legacyPoints && legacyPoints.parent) {
+        legacyPoints.parent.remove(legacyPoints);
+    }
+    if (corePoints && corePoints.parent) {
+        corePoints.parent.remove(corePoints);
+    }
+    if (glowPoints && glowPoints.parent) {
+        glowPoints.parent.remove(glowPoints);
+    }
+
+    if (mode === 'legacy') {
+        if (legacyPoints) {
+            scene.add(legacyPoints);
+        }
+        points = legacyPoints;
+    } else {
+        if (corePoints) {
+            scene.add(corePoints);
+        }
+        if (glowPoints) {
+            glowScene.add(glowPoints);
+        }
+        points = corePoints;
+    }
+    updateGlowUniforms();
+    if (benchmarkReady) {
+        updateBenchmarkUI();
+    }
+}
+
+function rebuildPointsObjects() {
+    const oldLegacyPoints = legacyPoints;
+    const oldCorePoints = corePoints;
+    const oldGlowPoints = glowPoints;
+
+    legacyPoints = geometry ? new THREE.Points(geometry, legacyMaterial) : null;
+    corePoints = geometry ? new THREE.Points(geometry, coreMaterial) : null;
+    glowPoints = geometry ? new THREE.Points(geometry, glowMaterial) : null;
+
+    detachPoints(oldLegacyPoints);
+    detachPoints(oldCorePoints);
+    detachPoints(oldGlowPoints);
+
+    applyGlowMode(CONFIG.glowMode);
+}
 
 console.log('Three.js загружен:', typeof THREE !== 'undefined');
 console.log('SVGLoader загружен:', typeof SVGLoader !== 'undefined');
@@ -1093,7 +1318,7 @@ async function generateParticlesFromSVG() {
     distanceBuffer = newDistanceBuffer;
     
     // Обновляем geometry, если она уже создана (для постепенного добавления точек)
-    if (geometry && points) {
+    if (geometry) {
         // Убеждаемся, что массив glows имеет правильный размер
         if (glows.length !== totalParticleCount) {
             glows = new Float32Array(totalParticleCount);
@@ -1164,8 +1389,6 @@ async function recreateParticles() {
         }
     }
     
-    // Сохраняем старый объект points для удаления
-    const oldPoints = points;
     const oldGeometry = geometry;
     
     // Создаем новую геометрию с правильным количеством точек
@@ -1197,35 +1420,7 @@ async function recreateParticles() {
     // Убеждаемся, что геометрия знает о количестве вершин
     geometry.setDrawRange(0, totalParticleCount);
     
-    // Создаем новый объект Points с нуля
-    points = new THREE.Points(geometry, material);
-    
-    // Удаляем старые точки из сцены (если они были)
-    if (oldPoints) {
-        // Удаляем points из сцены
-        if (oldPoints.parent === scene) {
-            scene.remove(oldPoints);
-        }
-        
-        // Отключаем геометрию от points перед dispose
-        oldPoints.geometry = null;
-        oldPoints.material = null;
-        
-    }
-    
-    // Убеждаемся, что в сцене нет других Points объектов (на случай ошибок)
-    for (let i = scene.children.length - 1; i >= 0; i--) {
-        const child = scene.children[i];
-        if (child instanceof THREE.Points && child !== points) {
-            if (child.geometry) {
-                child.geometry.dispose();
-            }
-            scene.remove(child);
-        }
-    }
-    
-    // Добавляем новый points в сцену
-    scene.add(points);
+    rebuildPointsObjects();
     
     // Очищаем старую геометрию после добавления нового объекта
     if (oldGeometry && oldGeometry !== geometry) {
@@ -1257,13 +1452,7 @@ async function scaleSVGObject(newSize) {
     cachedSVGHeight = null;
     await generateParticlesFromSVG();
     
-    // Обновляем геометрию точек
-    if (points) {
-        scene.remove(points);
-        if (geometry) {
-            geometry.dispose();
-        }
-    }
+    const oldGeometry = geometry;
     
     geometry = new THREE.BufferGeometry();
     // Убеждаемся, что массив glows имеет правильный размер
@@ -1276,8 +1465,10 @@ async function scaleSVGObject(newSize) {
     geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1).setUsage(THREE.DynamicDrawUsage));
     geometry.setAttribute('glow', new THREE.BufferAttribute(glows, 1).setUsage(THREE.DynamicDrawUsage));
     
-    points = new THREE.Points(geometry, material);
-    scene.add(points);
+    rebuildPointsObjects();
+    if (oldGeometry && oldGeometry !== geometry) {
+        oldGeometry.dispose();
+    }
 }
 
 // Флаг готовности
@@ -1298,8 +1489,7 @@ let isInitialized = false;
         geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3).setUsage(THREE.DynamicDrawUsage));
         geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1).setUsage(THREE.DynamicDrawUsage));
         geometry.setAttribute('glow', new THREE.BufferAttribute(glows, 1).setUsage(THREE.DynamicDrawUsage));
-        points = new THREE.Points(geometry, material);
-        scene.add(points);
+        rebuildPointsObjects();
         isInitialized = true;
         
         // Устанавливаем время начала анимации загрузки
@@ -2302,10 +2492,7 @@ function setupControl(id, configKey, valueId) {
         } else if (id === 'glowRadius') {
             // Радиус свечения: прямой множитель (1-50)
             CONFIG[configKey] = value;
-            // Обновляем uniform в шейдере
-            if (material && material.uniforms) {
-                material.uniforms.glowRadiusMultiplier.value = CONFIG.glowRadius;
-            }
+            updateGlowUniforms();
         } else if (id === 'velocityGlowMultiplier') {
             // Преобразование: слайдер (0-200) -> CONFIG (0-2.0)
             CONFIG[configKey] = value / 100;
@@ -2383,6 +2570,29 @@ setupControl('depthDarkeningStrength', 'depthDarkeningStrength', 'depthDarkening
 setupControl('glowBrightness', 'glowBrightness', 'glowBrightnessValue');
 setupControl('glowRadius', 'glowRadius', 'glowRadiusValue');
 setupControl('velocityGlowMultiplier', 'velocityGlowMultiplier', 'velocityGlowMultiplierValue');
+const glowModeSelect = document.getElementById('glowMode');
+const glowModeValue = document.getElementById('glowModeValue');
+const glowModeLabels = {
+    legacy: 'Legacy',
+    optimized: 'Optimized'
+};
+const updateGlowModeLabel = () => {
+    if (glowModeValue) {
+        glowModeValue.textContent = glowModeLabels[CONFIG.glowMode] || CONFIG.glowMode;
+    }
+};
+if (glowModeSelect) {
+    glowModeSelect.value = CONFIG.glowMode;
+    updateGlowModeLabel();
+    glowModeSelect.addEventListener('change', (e) => {
+        const mode = e.target.value;
+        applyGlowMode(mode);
+        updateGlowModeLabel();
+        if (typeof PerformanceMonitor !== 'undefined') {
+            PerformanceMonitor.reset();
+        }
+    });
+}
 setupControl('sizeVariation', 'sizeVariation', 'sizeVariationValue');
 setupControl('forceStrength', 'forceStrength', 'forceStrengthValue');
 setupControl('interactionRadius', 'interactionRadius', 'interactionRadiusValue');
@@ -3148,6 +3358,208 @@ const PerformanceMonitor = {
     }
 };
 
+// ========== BENCHMARK ==========
+const BENCHMARK_STORAGE_KEY = 'particleBenchmarkBaseline';
+const benchmarkDurationInput = document.getElementById('benchmarkDuration');
+const benchmarkButton = document.getElementById('runBenchmark');
+const benchmarkStatus = document.getElementById('benchmarkStatus');
+const benchmarkModeValue = document.getElementById('benchmarkMode');
+const benchmarkBaselineValue = document.getElementById('benchmarkBaseline');
+const benchmarkLastValue = document.getElementById('benchmarkLast');
+const benchmarkDeltaValue = document.getElementById('benchmarkDelta');
+
+const loadBenchmarkBaselines = () => {
+    try {
+        const stored = localStorage.getItem(BENCHMARK_STORAGE_KEY);
+        if (stored) {
+            const parsed = JSON.parse(stored);
+            if (parsed && typeof parsed === 'object') {
+                return parsed;
+            }
+        }
+    } catch (e) {
+        console.warn('Ошибка загрузки baseline бенчмарка:', e);
+    }
+    return {};
+};
+
+const saveBenchmarkBaselines = (baselines) => {
+    try {
+        localStorage.setItem(BENCHMARK_STORAGE_KEY, JSON.stringify(baselines));
+    } catch (e) {
+        console.warn('Ошибка сохранения baseline бенчмарка:', e);
+    }
+};
+
+const benchmarkBaselines = loadBenchmarkBaselines();
+const benchmarkState = {
+    running: false,
+    startTime: 0,
+    lastTime: 0,
+    durationMs: 5000,
+    frameTimes: [],
+    lastResult: null
+};
+
+function formatBenchmarkResult(result) {
+    if (!result) {
+        return '—';
+    }
+    const fps = Math.round(result.fps);
+    const frameTime = result.frameTime.toFixed(2);
+    return `${fps} FPS / ${frameTime} ms`;
+}
+
+function updateBenchmarkUI() {
+    if (benchmarkModeValue) {
+        benchmarkModeValue.textContent = CONFIG.glowMode === 'legacy' ? 'Legacy' : 'Optimized';
+    }
+    if (benchmarkBaselineValue) {
+        const baseline = benchmarkBaselines[CONFIG.glowMode] || null;
+        benchmarkBaselineValue.textContent = formatBenchmarkResult(baseline);
+    }
+    if (benchmarkLastValue) {
+        const lastResult = benchmarkState.lastResult && benchmarkState.lastResult.mode === CONFIG.glowMode
+            ? benchmarkState.lastResult
+            : null;
+        benchmarkLastValue.textContent = formatBenchmarkResult(lastResult);
+    }
+    if (benchmarkDeltaValue) {
+        const baseline = benchmarkBaselines[CONFIG.glowMode] || null;
+        const lastResult = benchmarkState.lastResult && benchmarkState.lastResult.mode === CONFIG.glowMode
+            ? benchmarkState.lastResult
+            : null;
+        if (baseline && lastResult) {
+            const deltaFps = lastResult.fps - baseline.fps;
+            const deltaFrame = lastResult.frameTime - baseline.frameTime;
+            const fpsSign = deltaFps >= 0 ? '+' : '';
+            const frameSign = deltaFrame >= 0 ? '+' : '';
+            benchmarkDeltaValue.textContent = `${fpsSign}${deltaFps.toFixed(0)} FPS / ${frameSign}${deltaFrame.toFixed(2)} ms`;
+        } else {
+            benchmarkDeltaValue.textContent = '—';
+        }
+    }
+}
+
+function startBenchmark() {
+    if (benchmarkState.running) {
+        return;
+    }
+    let durationSeconds = 5;
+    if (benchmarkDurationInput) {
+        const parsed = parseFloat(benchmarkDurationInput.value);
+        if (!Number.isNaN(parsed)) {
+            durationSeconds = Math.min(30, Math.max(1, parsed));
+            benchmarkDurationInput.value = durationSeconds.toString();
+        }
+    }
+    benchmarkState.durationMs = durationSeconds * 1000;
+    benchmarkState.running = true;
+    benchmarkState.startTime = performance.now();
+    benchmarkState.lastTime = benchmarkState.startTime;
+    benchmarkState.frameTimes = [];
+    benchmarkState.lastResult = null;
+    if (benchmarkStatus) {
+        benchmarkStatus.textContent = 'Benchmark запущен...';
+    }
+    if (benchmarkButton) {
+        benchmarkButton.disabled = true;
+        benchmarkButton.textContent = 'Benchmark...';
+    }
+}
+
+function finishBenchmark() {
+    benchmarkState.running = false;
+    const samples = benchmarkState.frameTimes.length;
+    if (samples > 0) {
+        const total = benchmarkState.frameTimes.reduce((sum, value) => sum + value, 0);
+        const avgFrameTime = total / samples;
+        const avgFps = 1000 / avgFrameTime;
+        benchmarkState.lastResult = {
+            fps: avgFps,
+            frameTime: avgFrameTime,
+            durationMs: benchmarkState.durationMs,
+            timestamp: Date.now(),
+            mode: CONFIG.glowMode
+        };
+        if (!benchmarkBaselines[CONFIG.glowMode]) {
+            benchmarkBaselines[CONFIG.glowMode] = benchmarkState.lastResult;
+            saveBenchmarkBaselines(benchmarkBaselines);
+            if (benchmarkStatus) {
+                benchmarkStatus.textContent = 'Baseline сохранён для этого режима.';
+            }
+        } else if (benchmarkStatus) {
+            benchmarkStatus.textContent = 'Benchmark завершён.';
+        }
+    } else if (benchmarkStatus) {
+        benchmarkStatus.textContent = 'Недостаточно данных для бенчмарка.';
+    }
+
+    if (benchmarkButton) {
+        benchmarkButton.disabled = false;
+        benchmarkButton.textContent = 'Запустить Benchmark';
+    }
+    updateBenchmarkUI();
+}
+
+function updateBenchmark(currentTime) {
+    if (!benchmarkState.running) {
+        return;
+    }
+    const delta = currentTime - benchmarkState.lastTime;
+    benchmarkState.lastTime = currentTime;
+    if (delta > 0) {
+        benchmarkState.frameTimes.push(delta);
+    }
+    if (currentTime - benchmarkState.startTime >= benchmarkState.durationMs) {
+        finishBenchmark();
+    }
+}
+
+if (benchmarkButton) {
+    benchmarkButton.addEventListener('click', startBenchmark);
+}
+benchmarkReady = true;
+updateBenchmarkUI();
+
+function isGlowActive() {
+    if (CONFIG.glowBrightness > 0 || CONFIG.velocityGlowMultiplier > 0) {
+        return true;
+    }
+    if (CONFIG.waveEnabled && CONFIG.waveGlowIntensity > 0) {
+        return true;
+    }
+    if (CONFIG.explosionEnabled && CONFIG.explosionGlowIntensity > 0) {
+        return true;
+    }
+    return false;
+}
+
+function renderOptimizedGlowFrame() {
+    ensureGlowRenderTarget();
+    const prevAutoClear = renderer.autoClear;
+    renderer.autoClear = false;
+
+    if (isGlowActive() && glowPoints) {
+        renderer.setRenderTarget(glowRenderTarget);
+        renderer.clear();
+        renderer.render(glowScene, camera);
+    } else {
+        renderer.setRenderTarget(glowRenderTarget);
+        renderer.clear();
+    }
+
+    renderer.setRenderTarget(null);
+    renderer.clear();
+    renderer.render(scene, camera);
+
+    if (glowCompositeMaterial) {
+        renderer.render(compositeScene, compositeCamera);
+    }
+
+    renderer.autoClear = prevAutoClear;
+}
+
 // ========== АНИМАЦИЯ ==========
 function animate() {
     requestAnimationFrame(animate);
@@ -3173,10 +3585,17 @@ function animate() {
     lastFrameTime = currentTime;
     
     updatePhysics();
-    renderer.render(scene, camera);
+    if (CONFIG.glowMode === 'legacy') {
+        renderer.render(scene, camera);
+    } else {
+        renderOptimizedGlowFrame();
+    }
     
     // Обновляем мониторинг производительности каждый кадр для точного подсчёта FPS
     PerformanceMonitor.update();
+    if (typeof updateBenchmark === 'function') {
+        updateBenchmark(currentTime);
+    }
 }
 
 window.addEventListener('resize', () => {
@@ -3189,6 +3608,8 @@ window.addEventListener('resize', () => {
     camera.bottom = -viewSize / 2;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+    updateSizeScale();
+    updateGlowRenderTargetSize();
 });
 
 animate();
