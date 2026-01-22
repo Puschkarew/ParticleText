@@ -109,7 +109,10 @@ let CONFIG = {
     explosionReturnDelay: 1200, // Задержка перед возвратом точек (мс) - чем больше, тем дольше точки остаются разлетевшимися
     explosionGlowIntensity: 0.8, // Интенсивность подсветки (0-1)
     explosionGlowDuration: 500, // Длительность подсветки (мс)
-    explosions: [] // Массив активных взрывов: { position: Vector3, startTime: number, id: number }
+    explosions: [], // Массив активных взрывов: { position: Vector3, startTime: number, id: number }
+    // Параметры отступов формы от краёв viewport (в долях, 0.15 = 15%)
+    paddingX: 0.15, // Отступ слева и справа (15%)
+    paddingY: 0.30  // Отступ сверху и снизу (30%)
 };
 
 // ========== НАСТРОЙКА SVG ==========
@@ -676,32 +679,42 @@ async function createSVGGeometry(size = 2) {
 
 // Кэш для базового размера SVG (чтобы не вычислять каждый раз)
 let cachedSVGBaseSize = null;
+let cachedSVGWidth = null;
+let cachedSVGHeight = null;
 
 // Функция вычисления оптимального размера SVG
+// Использует алгоритм "contain" — масштабирует SVG так, чтобы он помещался целиком
+// с учётом минимальных отступов по X и Y
 async function calculateOptimalSVGSize(baseSize = 1.0) {
     if (cachedSVGBaseSize === null) {
         // Создаем временную геометрию для вычисления bounding box
         const tempGeometry = await createSVGGeometry(baseSize);
         tempGeometry.computeBoundingBox();
         
-        // Вычисляем размер SVG
+        // Вычисляем размеры SVG
         const bbox = tempGeometry.boundingBox;
-        const svgWidth = bbox.max.x - bbox.min.x;
-        const svgHeight = bbox.max.y - bbox.min.y;
-        cachedSVGBaseSize = Math.max(svgWidth, svgHeight);
+        cachedSVGWidth = bbox.max.x - bbox.min.x;
+        cachedSVGHeight = bbox.max.y - bbox.min.y;
+        cachedSVGBaseSize = Math.max(cachedSVGWidth, cachedSVGHeight);
         
         // Освобождаем память
         tempGeometry.dispose();
     }
     
-    // Для ортографической камеры видимая ширина не зависит от расстояния
-    // Вычисляем видимую ширину из параметров камеры
+    // Для ортографической камеры вычисляем видимую область
     const visibleWidth = camera.right - camera.left;
+    const visibleHeight = camera.top - camera.bottom;
     
-    // Масштабируем SVG так, чтобы он занимал максимум 80% видимой ширины
-    // Возвращаем базовый scaleFactor (для sphereRadius=1.0)
-    const targetWidth = visibleWidth * 0.8;
-    const baseScaleFactor = targetWidth / cachedSVGBaseSize;
+    // Доступная область с учётом отступов (paddingX и paddingY в долях)
+    const availableWidth = visibleWidth * (1 - 2 * CONFIG.paddingX);
+    const availableHeight = visibleHeight * (1 - 2 * CONFIG.paddingY);
+    
+    // Вычисляем масштаб по каждому измерению
+    const scaleByWidth = availableWidth / cachedSVGWidth;
+    const scaleByHeight = availableHeight / cachedSVGHeight;
+    
+    // Выбираем минимальный масштаб (contain) — чтобы форма помещалась целиком
+    const baseScaleFactor = Math.min(scaleByWidth, scaleByHeight);
     
     return baseScaleFactor;
 }
@@ -771,21 +784,13 @@ async function generateOutsidePointsAsync(svgMesh, raycaster, targetCount, viewp
 
 // Функция генерации частиц на основе SVG
 async function generateParticlesFromSVG() {
-    // Всегда пересоздаем геометрию, если она не существует
-    // Вычисляем базовый масштаб для SVG (для sphereRadius=1.0, SVG занимает 80% ширины)
+    // Вычисляем оптимальный масштаб для SVG с учётом padding (алгоритм contain)
+    // baseScaleFactor — максимальный размер, при котором форма помещается с отступами
     const baseScaleFactor = await calculateOptimalSVGSize();
     
-        // Применяем CONFIG.sphereRadius как множитель, но ограничиваем максимальный размер
-        // чтобы SVG всегда помещался во вьюпорт (максимум 95% видимой ширины)
-        // Для ортографической камеры видимая ширина не зависит от расстояния
-        const visibleWidth = camera.right - camera.left;
-        const maxSVGWidth = visibleWidth * 0.95; // Максимум 95% ширины
-    
-    // Вычисляем максимально допустимый scaleFactor
-    const maxScaleFactor = maxSVGWidth / cachedSVGBaseSize;
-    
-    // Применяем sphereRadius, но ограничиваем максимальным размером
-    const scaleFactor = Math.min(baseScaleFactor * CONFIG.sphereRadius, maxScaleFactor);
+    // Применяем sphereRadius как множитель, но ограничиваем baseScaleFactor
+    // (это максимум, который помещается с учётом padding)
+    const scaleFactor = Math.min(baseScaleFactor * CONFIG.sphereRadius, baseScaleFactor);
     const finalSize = scaleFactor;
     
     // Создаем финальную геометрию с правильным размером
@@ -1221,6 +1226,8 @@ async function scaleSVGObject(newSize) {
     // Пересоздаем SVG геометрию с новым размером
     svgGeometry = null;
     cachedSVGBaseSize = null; // Сбрасываем кэш размера
+    cachedSVGWidth = null;
+    cachedSVGHeight = null;
     await generateParticlesFromSVG();
     
     // Обновляем геометрию точек
@@ -1549,42 +1556,30 @@ function updatePhysics() {
         
         geometry.attributes.position.needsUpdate = true;
         
-        // Обновляем цвета на основе расстояния от камеры во время анимации загрузки
+        // Обновляем цвета на основе ТОЛЬКО Z-расстояния от камеры во время анимации загрузки
+        // FIX: Используем только Z-координату, чтобы избежать эффекта виньетки (затемнения по краям экрана)
         const colorsArray = geometry.attributes.color ? geometry.attributes.color.array : null;
         if (colorsArray) {
-            // Вычисляем расстояния от камеры для всех частиц
-            let minDistance = Infinity;
-            let maxDistance = -Infinity;
-            const distances = [];
+            const camZ = camera.position.z;
+            // Используем те же фиксированные параметры, что и после анимации
+            const fixedMinDistance = 0;
+            const fixedMaxDistance = 70;
+            const fixedDistanceRange = fixedMaxDistance - fixedMinDistance;
             
+            // Обновляем цвета на основе ТОЛЬКО Z-расстояния от камеры
             for (let i = 0; i < actualParticleCount; i++) {
-                const i3 = i * 3;
-                if (i3 + 2 >= positionsArray.length) break;
-                
-                tempVector.set(
-                    positionsArray[i3],
-                    positionsArray[i3 + 1],
-                    positionsArray[i3 + 2]
-                );
-                const distance = tempVector.distanceTo(camera.position);
-                distances.push(distance);
-                minDistance = Math.min(minDistance, distance);
-                maxDistance = Math.max(maxDistance, distance);
-            }
-            
-            // Нормализуем диапазон, чтобы избежать слишком резких переходов
-            const distanceRange = Math.max(maxDistance - minDistance, 0.1);
-            
-            // Обновляем цвета на основе расстояния от камеры
-            for (let i = 0; i < actualParticleCount && i < distances.length; i++) {
                 const i3 = i * 3;
                 if (i3 + 2 >= colorsArray.length) break;
                 
-                const distance = distances[i];
-                // Нормализуем расстояние от 0 до 1
-                const normalizedDistance = distanceRange > 0 ? (distance - minDistance) / distanceRange : 0;
-                // Инвертируем: ближние точки ярче (1.0), дальние темнее (0.0)
-                const brightness = 1.0 - normalizedDistance; // От 1.0 до 0.0
+                // Используем только Z-расстояние (как после анимации)
+                const dz = positionsArray[i3 + 2] - camZ;
+                const distance = Math.abs(dz);
+                
+                // Нормализуем расстояние с фиксированным диапазоном
+                const normalizedDistance = Math.max(0, Math.min(1, distance / fixedDistanceRange));
+                
+                // Применяем эффект глубины с CONFIG.depthDarkeningStrength
+                const brightness = 1.0 - normalizedDistance * CONFIG.depthDarkeningStrength;
                 const clampedBrightness = Math.max(0.0, Math.min(1.0, brightness));
                 
                 colorsArray[i3] = clampedBrightness;
@@ -1593,6 +1588,17 @@ function updatePhysics() {
             }
             
             geometry.attributes.color.needsUpdate = true;
+        }
+        
+        // Плавное нарастание glow во время анимации загрузки
+        // Используем easingValue чтобы glow синхронно появлялся с анимацией позиций
+        const targetGlow = CONFIG.glowBrightness;
+        const currentGlowValue = targetGlow * easingValue;
+        for (let i = 0; i < actualParticleCount && i < glows.length; i++) {
+            glows[i] = currentGlowValue;
+        }
+        if (geometry.attributes.glow) {
+            geometry.attributes.glow.needsUpdate = true;
         }
         
         // Проверяем, завершена ли анимация по времени
@@ -2235,6 +2241,41 @@ function setupControl(id, configKey, valueId) {
     const slider = document.getElementById(id);
     const valueDisplay = document.getElementById(valueId);
     
+    // ===== ИНИЦИАЛИЗАЦИЯ: устанавливаем slider.value и valueDisplay из CONFIG =====
+    let sliderValue;
+    // Преобразование CONFIG → slider (обратное к тому, что делается в input handler)
+    if (id === 'waveForce') {
+        sliderValue = CONFIG[configKey] * 1000;
+    } else if (id === 'maxBrightness' || id === 'depthDarkeningStrength' || id === 'glowBrightness') {
+        sliderValue = CONFIG[configKey] * 100;
+    } else if (id === 'velocityGlowMultiplier') {
+        sliderValue = CONFIG[configKey] * 100;
+    } else {
+        sliderValue = CONFIG[configKey];
+    }
+    slider.value = sliderValue;
+    
+    // Форматирование valueDisplay (та же логика, что и в input handler)
+    if (id === 'sizeVariation') {
+        valueDisplay.textContent = Math.round(sliderValue * 100) + '%';
+    } else if (id === 'maxBrightness' || id === 'depthDarkeningStrength' || id === 'glowBrightness' || id === 'velocityGlowMultiplier') {
+        valueDisplay.textContent = Math.round(sliderValue) + '%';
+    } else if (id === 'glowRadius') {
+        valueDisplay.textContent = Math.round(sliderValue) + 'x';
+    } else if (id === 'waveInterval') {
+        valueDisplay.textContent = sliderValue.toFixed(0) + ' мс';
+    } else if (id === 'waveForce') {
+        valueDisplay.textContent = sliderValue.toFixed(0);
+    } else if (id === 'waveWidth' || id === 'waveSpeed' || id === 'waveForceFalloff') {
+        valueDisplay.textContent = sliderValue.toFixed(1);
+    } else if (id === 'waveGlowIntensity' || id === 'autonomousMotionStrength' || id === 'springConstant' || id === 'damping') {
+        valueDisplay.textContent = sliderValue.toFixed(2);
+    } else if (sliderValue < 1) {
+        valueDisplay.textContent = sliderValue.toFixed(2);
+    } else {
+        valueDisplay.textContent = sliderValue.toFixed(0);
+    }
+    
     slider.addEventListener('input', (e) => {
         const value = parseFloat(e.target.value);
         // Преобразование для waveForce: новое значение (0-2) -> старое значение (0-0.002)
@@ -2853,6 +2894,14 @@ function restartLoadAnimation() {
         positionsArray[i3 + 2] = startPositions[i3 + 2];
     }
     
+    // Сбрасываем glow в 0 для плавного нарастания во время анимации
+    for (let i = 0; i < glows.length; i++) {
+        glows[i] = 0;
+    }
+    if (geometry.attributes.glow) {
+        geometry.attributes.glow.needsUpdate = true;
+    }
+    
     // Перезапускаем анимацию
     CONFIG.isLoadingAnimation = true;
     CONFIG.loadAnimationStartTime = Date.now();
@@ -2872,6 +2921,10 @@ if (restartButton) {
 // Обработчик для количества точек с debounce для оптимизации
 const particleCountSlider = document.getElementById('particleCount');
 const particleCountValue = document.getElementById('particleCountValue');
+// ===== ИНИЦИАЛИЗАЦИЯ из CONFIG =====
+particleCountSlider.value = CONFIG.particleCount;
+particleCountValue.textContent = CONFIG.particleCount;
+
 let particleCountTimeout = null;
 let lastRecreateCallTime = 0; // Отслеживаем время последнего вызова recreateParticles
 particleCountSlider.addEventListener('input', (e) => {
@@ -2890,6 +2943,10 @@ particleCountSlider.addEventListener('input', (e) => {
 // Обработчик для количества внешних точек с debounce для оптимизации
 const outsideParticleCountSlider = document.getElementById('outsideParticleCount');
 const outsideParticleCountValue = document.getElementById('outsideParticleCountValue');
+// ===== ИНИЦИАЛИЗАЦИЯ из CONFIG =====
+outsideParticleCountSlider.value = CONFIG.outsideParticleCount;
+outsideParticleCountValue.textContent = CONFIG.outsideParticleCount;
+
 let outsideParticleCountTimeout = null;
 outsideParticleCountSlider.addEventListener('input', (e) => {
     const value = parseInt(e.target.value);
@@ -2907,6 +2964,10 @@ outsideParticleCountSlider.addEventListener('input', (e) => {
 // Обработчик для процента невидимых точек вне формы с debounce для оптимизации
 const outsideInvisiblePercentageSlider = document.getElementById('outsideInvisiblePercentage');
 const outsideInvisiblePercentageValue = document.getElementById('outsideInvisiblePercentageValue');
+// ===== ИНИЦИАЛИЗАЦИЯ из CONFIG =====
+outsideInvisiblePercentageSlider.value = CONFIG.outsideInvisiblePercentage;
+outsideInvisiblePercentageValue.textContent = CONFIG.outsideInvisiblePercentage + '%';
+
 let outsideInvisiblePercentageTimeout = null;
 outsideInvisiblePercentageSlider.addEventListener('input', (e) => {
     const value = parseInt(e.target.value);
