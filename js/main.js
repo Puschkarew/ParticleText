@@ -128,7 +128,8 @@ const PRESETS = {
         name: 'Mobile',
         svgPath: 'Starting Point Mobile.svg',
         pointSize: 2,
-        particleCount: 7500
+        particleCount: 7500,
+        autonomousMotionStrength: 0.02
     }
 };
 
@@ -1409,6 +1410,11 @@ async function applyPreset(presetName, skipRecreate = false) {
     // Обновляем количество частиц
     if (preset.particleCount) {
         CONFIG.particleCount = preset.particleCount;
+    }
+    
+    // Обновляем скорость пассивного движения
+    if (preset.autonomousMotionStrength !== undefined) {
+        CONFIG.autonomousMotionStrength = preset.autonomousMotionStrength;
     }
     
     // Очищаем кэш SVG для загрузки нового файла
