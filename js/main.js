@@ -121,12 +121,14 @@ const PRESETS = {
     desktop: {
         name: 'Desktop',
         svgPath: 'Starting Point.svg',
-        pointSize: 4
+        pointSize: 4,
+        particleCount: 10000
     },
     mobile: {
         name: 'Mobile',
         svgPath: 'Starting Point Mobile.svg',
-        pointSize: 1
+        pointSize: 2,
+        particleCount: 7500
     }
 };
 
@@ -1403,6 +1405,11 @@ async function applyPreset(presetName, skipRecreate = false) {
     
     // Обновляем размер точек
     CONFIG.pointSize = preset.pointSize;
+    
+    // Обновляем количество частиц
+    if (preset.particleCount) {
+        CONFIG.particleCount = preset.particleCount;
+    }
     
     // Очищаем кэш SVG для загрузки нового файла
     cachedSVGData = null;
