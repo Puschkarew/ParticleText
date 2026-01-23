@@ -99,10 +99,9 @@ let CONFIG = {
     maxBrightness: 1.0, // Максимальная яркость точек (0-1, где 1.0 = 100% белый цвет)
     depthDarkeningStrength: 1.85, // Сила затемнения по глубине (0 = нет эффекта, 1 = максимум)
     // Параметры свечения точек
-    glowBrightness: 0.19, // Яркость свечения (0 = нет свечения, 1 = максимум)
-    glowRadius: 50.0, // Радиус свечения (прямой множитель размера, 1-50)
-    velocityGlowMultiplier: 0.10, // Множитель свечения от скорости движения точки (0 = нет эффекта, 2 = сильный эффект)
-    glowMode: 'optimized', // Режим свечения: 'legacy' | 'optimized'
+    glowBrightness: 0.08, // Яркость свечения (0 = нет свечения, 1 = максимум)
+    glowRadius: 15.0, // Радиус свечения (прямой множитель размера, 1-50)
+    velocityGlowMultiplier: 0.20, // Множитель свечения от скорости движения точки (0 = нет эффекта, 2 = сильный эффект)
     // Параметры взрыва по клику
     explosionEnabled: true, // Флаг включения/выключения взрыва
     explosionForce: 10.0, // Сила разлёта (дальность)
@@ -117,8 +116,23 @@ let CONFIG = {
 };
 
 // ========== НАСТРОЙКА SVG ==========
-// Путь к SVG файлу
-const SVG_PATH = 'Starting Point.svg';
+// Конфигурация пресетов Desktop/Mobile
+const PRESETS = {
+    desktop: {
+        name: 'Desktop',
+        svgPath: 'Starting Point.svg',
+        pointSize: 4
+    },
+    mobile: {
+        name: 'Mobile',
+        svgPath: 'Starting Point Mobile.svg',
+        pointSize: 1
+    }
+};
+
+// Текущий пресет и путь к SVG
+let currentPreset = 'desktop';
+let SVG_PATH = PRESETS.desktop.svgPath;
 
 // ========== СОЗДАНИЕ КРУГЛОЙ ТЕКСТУРЫ ==========
 function createCircleTexture(size = 64) {
@@ -302,8 +316,6 @@ let wasWaveActive = false;
 let points = null;
 let corePoints = null;
 let glowPoints = null;
-let legacyPoints = null;
-let benchmarkReady = false;
 let svgGeometry = null;
 let cloudCenter = new THREE.Vector3(0, 0, 0); // Центр облака частиц
 let totalParticleCount = CONFIG.particleCount; // Общее количество точек (внутри + снаружи SVG)
@@ -341,81 +353,6 @@ const MAX_OPTIMIZED_GLOW_RADIUS = 20;
 const GLOW_RENDER_SCALE_DESKTOP = 0.5;
 const GLOW_RENDER_SCALE_MOBILE = 0.33;
 const GLOW_BRIGHTNESS_MULTIPLIER = 1.5;
-
-// Вершинный шейдер (legacy): ядро + glow в одном проходе
-const legacyVertexShader = `
-    attribute float size;
-    attribute vec3 color;
-    attribute float glow;
-    uniform float sizeScale;
-    uniform float glowRadiusMultiplier;
-    varying vec3 vColor;
-    varying float vGlow;
-    
-    void main() {
-        vColor = color;
-        vGlow = glow;
-        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-        
-        // Для ортографической камеры используем простую формулу
-        // sizeScale уже содержит правильный масштаб для viewport
-        // Увеличиваем размер точки при glow для создания ореола (радиус контролируется glowRadiusMultiplier)
-        float glowSize = 1.0 + glow * glowRadiusMultiplier;
-        gl_PointSize = size * sizeScale * glowSize;
-        gl_Position = projectionMatrix * mvPosition;
-    }
-`;
-
-// Фрагментный шейдер (legacy): ядро + glow в одном проходе
-const legacyFragmentShader = `
-    uniform sampler2D pointTexture;
-    uniform sampler2D glowTexture;
-    uniform float glowRadiusMultiplier;
-    uniform float glowBrightnessMultiplier;
-    varying vec3 vColor;
-    varying float vGlow;
-    
-    void main() {
-        // Масштабируем координаты для ядра точки (оно меньше из-за увеличенного размера при glow)
-        // Используем glowRadiusMultiplier для согласованности с вершинным шейдером
-        float coreScale = 1.0 + vGlow * glowRadiusMultiplier;
-        
-        // Центрируем и масштабируем координаты для ядра
-        vec2 coreCoord = (gl_PointCoord - 0.5) * coreScale + 0.5;
-        
-        // Вычисляем расстояние от центра для определения видимости ядра
-        // Используем smoothstep для плавного затухания вместо ClampToEdge (гипотеза H)
-        vec2 centered = coreCoord - 0.5;
-        float dist = length(centered) * 2.0; // 0 в центре, 1 на краях
-        
-        // Плавное затухание ядра к краям (от 0.9 до 1.0)
-        float coreMask = 1.0 - smoothstep(0.9, 1.0, dist);
-        
-        // Получаем цвет glow (на полных координатах точки)
-        vec4 glowColor = texture2D(glowTexture, gl_PointCoord);
-        
-        // Получаем цвет ядра только если координаты в допустимых пределах
-        vec4 coreColor = vec4(0.0);
-        if (coreCoord.x >= 0.0 && coreCoord.x <= 1.0 && coreCoord.y >= 0.0 && coreCoord.y <= 1.0) {
-            coreColor = texture2D(pointTexture, coreCoord);
-        }
-        
-        // Применяем маску затухания к ядру
-        coreColor.a *= coreMask;
-        
-        // Простое аддитивное комбинирование (яркость контролируется glowBrightnessMultiplier)
-        vec3 glowContrib = glowColor.rgb * vGlow * glowBrightnessMultiplier;
-        vec3 coreContrib = coreColor.rgb * coreColor.a;
-        
-        // Финальный цвет = ядро + glow
-        vec3 finalColor = coreContrib + glowContrib;
-        
-        // Альфа: максимум из ядра и glow
-        float finalAlpha = max(coreColor.a, glowColor.a * vGlow);
-        
-        gl_FragColor = vec4(vColor * finalColor, finalAlpha);
-    }
-`;
 
 // Вершинный шейдер (core-only): без увеличения радиуса
 const coreVertexShader = `
@@ -496,21 +433,6 @@ const calculateSizeScale = () => {
     return viewportHeight / 400.0;
 };
 
-const legacyMaterial = new THREE.ShaderMaterial({
-    uniforms: {
-        pointTexture: { value: circleTexture },
-        glowTexture: { value: glowTexture },
-        sizeScale: { value: calculateSizeScale() },
-        glowRadiusMultiplier: { value: CONFIG.glowRadius },
-        glowBrightnessMultiplier: { value: GLOW_BRIGHTNESS_MULTIPLIER }
-    },
-    vertexShader: legacyVertexShader,
-    fragmentShader: legacyFragmentShader,
-    transparent: true,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending
-});
-
 const coreMaterial = new THREE.ShaderMaterial({
     uniforms: {
         pointTexture: { value: circleTexture },
@@ -539,15 +461,12 @@ const glowMaterial = new THREE.ShaderMaterial({
 
 const updateSizeScale = () => {
     const sizeScale = calculateSizeScale();
-    legacyMaterial.uniforms.sizeScale.value = sizeScale;
     coreMaterial.uniforms.sizeScale.value = sizeScale;
     glowMaterial.uniforms.sizeScale.value = sizeScale;
 };
 
 const updateGlowUniforms = () => {
-    legacyMaterial.uniforms.glowRadiusMultiplier.value = CONFIG.glowRadius;
     glowMaterial.uniforms.glowRadiusMultiplier.value = Math.min(CONFIG.glowRadius, MAX_OPTIMIZED_GLOW_RADIUS);
-    legacyMaterial.uniforms.glowBrightnessMultiplier.value = GLOW_BRIGHTNESS_MULTIPLIER;
     glowMaterial.uniforms.glowBrightnessMultiplier.value = GLOW_BRIGHTNESS_MULTIPLIER;
 };
 
@@ -566,11 +485,7 @@ function detachPoints(pointsObject) {
     pointsObject.material = null;
 }
 
-function applyGlowMode(mode) {
-    CONFIG.glowMode = mode;
-    if (legacyPoints && legacyPoints.parent) {
-        legacyPoints.parent.remove(legacyPoints);
-    }
+function setupPoints() {
     if (corePoints && corePoints.parent) {
         corePoints.parent.remove(corePoints);
     }
@@ -578,40 +493,27 @@ function applyGlowMode(mode) {
         glowPoints.parent.remove(glowPoints);
     }
 
-    if (mode === 'legacy') {
-        if (legacyPoints) {
-            scene.add(legacyPoints);
-        }
-        points = legacyPoints;
-    } else {
-        if (corePoints) {
-            scene.add(corePoints);
-        }
-        if (glowPoints) {
-            glowScene.add(glowPoints);
-        }
-        points = corePoints;
+    if (corePoints) {
+        scene.add(corePoints);
     }
+    if (glowPoints) {
+        glowScene.add(glowPoints);
+    }
+    points = corePoints;
     updateGlowUniforms();
-    if (benchmarkReady) {
-        updateBenchmarkUI();
-    }
 }
 
 function rebuildPointsObjects() {
-    const oldLegacyPoints = legacyPoints;
     const oldCorePoints = corePoints;
     const oldGlowPoints = glowPoints;
 
-    legacyPoints = geometry ? new THREE.Points(geometry, legacyMaterial) : null;
     corePoints = geometry ? new THREE.Points(geometry, coreMaterial) : null;
     glowPoints = geometry ? new THREE.Points(geometry, glowMaterial) : null;
 
-    detachPoints(oldLegacyPoints);
     detachPoints(oldCorePoints);
     detachPoints(oldGlowPoints);
 
-    applyGlowMode(CONFIG.glowMode);
+    setupPoints();
 }
 
 console.log('Three.js загружен:', typeof THREE !== 'undefined');
@@ -1486,12 +1388,58 @@ async function scaleSVGObject(newSize) {
     }
 }
 
+// Функция применения пресета (Desktop/Mobile)
+async function applyPreset(presetName, skipRecreate = false) {
+    if (!PRESETS[presetName]) {
+        console.warn(`Пресет "${presetName}" не найден`);
+        return;
+    }
+    
+    const preset = PRESETS[presetName];
+    currentPreset = presetName;
+    
+    // Обновляем путь к SVG
+    SVG_PATH = preset.svgPath;
+    
+    // Обновляем размер точек
+    CONFIG.pointSize = preset.pointSize;
+    
+    // Очищаем кэш SVG для загрузки нового файла
+    cachedSVGData = null;
+    svgGeometry = null;
+    cachedSVGBaseSize = null;
+    cachedSVGWidth = null;
+    cachedSVGHeight = null;
+    
+    // Обновляем UI dropdown и слайдера
+    const presetSelect = document.getElementById('presetSelect');
+    const presetValue = document.getElementById('presetValue');
+    const pointSizeSlider = document.getElementById('pointSize');
+    const pointSizeValue = document.getElementById('pointSizeValue');
+    
+    if (presetSelect) presetSelect.value = presetName;
+    if (presetValue) presetValue.textContent = preset.name;
+    if (pointSizeSlider) pointSizeSlider.value = preset.pointSize;
+    if (pointSizeValue) pointSizeValue.textContent = preset.pointSize;
+    
+    // Пересоздаём частицы с новым SVG (если не пропускаем)
+    if (!skipRecreate && isInitialized) {
+        await recreateParticles();
+        // Обновляем размеры точек после пересоздания
+        updateParticleSizes();
+    }
+}
+
 // Флаг готовности
 let isInitialized = false;
 
 // Инициализация
 (async () => {
     try {
+        // Определяем начальный пресет по ширине окна
+        const initialPreset = window.innerWidth < 960 ? 'mobile' : 'desktop';
+        await applyPreset(initialPreset, true); // skipRecreate=true, т.к. ещё не инициализировано
+        
         await generateParticlesFromSVG();
         
         // Создаем geometry с текущими массивами (включая точки снаружи, если они уже добавлены)
@@ -2579,35 +2527,23 @@ if (waveEnabledCheckbox) {
     });
 }
 
+// Обработчик для переключения пресетов (Desktop/Mobile)
+const presetSelect = document.getElementById('presetSelect');
+const presetValue = document.getElementById('presetValue');
+if (presetSelect) {
+    presetSelect.value = currentPreset;
+    if (presetValue) presetValue.textContent = PRESETS[currentPreset]?.name || currentPreset;
+    presetSelect.addEventListener('change', async (e) => {
+        await applyPreset(e.target.value);
+    });
+}
+
 setupControl('pointSize', 'pointSize', 'pointSizeValue');
 setupControl('maxBrightness', 'maxBrightness', 'maxBrightnessValue');
 setupControl('depthDarkeningStrength', 'depthDarkeningStrength', 'depthDarkeningStrengthValue');
 setupControl('glowBrightness', 'glowBrightness', 'glowBrightnessValue');
 setupControl('glowRadius', 'glowRadius', 'glowRadiusValue');
 setupControl('velocityGlowMultiplier', 'velocityGlowMultiplier', 'velocityGlowMultiplierValue');
-const glowModeSelect = document.getElementById('glowMode');
-const glowModeValue = document.getElementById('glowModeValue');
-const glowModeLabels = {
-    legacy: 'Legacy',
-    optimized: 'Optimized'
-};
-const updateGlowModeLabel = () => {
-    if (glowModeValue) {
-        glowModeValue.textContent = glowModeLabels[CONFIG.glowMode] || CONFIG.glowMode;
-    }
-};
-if (glowModeSelect) {
-    glowModeSelect.value = CONFIG.glowMode;
-    updateGlowModeLabel();
-    glowModeSelect.addEventListener('change', (e) => {
-        const mode = e.target.value;
-        applyGlowMode(mode);
-        updateGlowModeLabel();
-        if (typeof PerformanceMonitor !== 'undefined') {
-            PerformanceMonitor.reset();
-        }
-    });
-}
 setupControl('sizeVariation', 'sizeVariation', 'sizeVariationValue');
 setupControl('forceStrength', 'forceStrength', 'forceStrengthValue');
 setupControl('interactionRadius', 'interactionRadius', 'interactionRadiusValue');
@@ -3373,170 +3309,6 @@ const PerformanceMonitor = {
     }
 };
 
-// ========== BENCHMARK ==========
-const BENCHMARK_STORAGE_KEY = 'particleBenchmarkBaseline';
-const benchmarkDurationInput = document.getElementById('benchmarkDuration');
-const benchmarkButton = document.getElementById('runBenchmark');
-const benchmarkStatus = document.getElementById('benchmarkStatus');
-const benchmarkModeValue = document.getElementById('benchmarkMode');
-const benchmarkBaselineValue = document.getElementById('benchmarkBaseline');
-const benchmarkLastValue = document.getElementById('benchmarkLast');
-const benchmarkDeltaValue = document.getElementById('benchmarkDelta');
-
-const loadBenchmarkBaselines = () => {
-    try {
-        const stored = localStorage.getItem(BENCHMARK_STORAGE_KEY);
-        if (stored) {
-            const parsed = JSON.parse(stored);
-            if (parsed && typeof parsed === 'object') {
-                return parsed;
-            }
-        }
-    } catch (e) {
-        console.warn('Ошибка загрузки baseline бенчмарка:', e);
-    }
-    return {};
-};
-
-const saveBenchmarkBaselines = (baselines) => {
-    try {
-        localStorage.setItem(BENCHMARK_STORAGE_KEY, JSON.stringify(baselines));
-    } catch (e) {
-        console.warn('Ошибка сохранения baseline бенчмарка:', e);
-    }
-};
-
-const benchmarkBaselines = loadBenchmarkBaselines();
-const benchmarkState = {
-    running: false,
-    startTime: 0,
-    lastTime: 0,
-    durationMs: 5000,
-    frameTimes: [],
-    lastResult: null
-};
-
-function formatBenchmarkResult(result) {
-    if (!result) {
-        return '—';
-    }
-    const fps = Math.round(result.fps);
-    const frameTime = result.frameTime.toFixed(2);
-    return `${fps} FPS / ${frameTime} ms`;
-}
-
-function updateBenchmarkUI() {
-    if (benchmarkModeValue) {
-        benchmarkModeValue.textContent = CONFIG.glowMode === 'legacy' ? 'Legacy' : 'Optimized';
-    }
-    if (benchmarkBaselineValue) {
-        const baseline = benchmarkBaselines[CONFIG.glowMode] || null;
-        benchmarkBaselineValue.textContent = formatBenchmarkResult(baseline);
-    }
-    if (benchmarkLastValue) {
-        const lastResult = benchmarkState.lastResult && benchmarkState.lastResult.mode === CONFIG.glowMode
-            ? benchmarkState.lastResult
-            : null;
-        benchmarkLastValue.textContent = formatBenchmarkResult(lastResult);
-    }
-    if (benchmarkDeltaValue) {
-        const baseline = benchmarkBaselines[CONFIG.glowMode] || null;
-        const lastResult = benchmarkState.lastResult && benchmarkState.lastResult.mode === CONFIG.glowMode
-            ? benchmarkState.lastResult
-            : null;
-        if (baseline && lastResult) {
-            const deltaFps = lastResult.fps - baseline.fps;
-            const deltaFrame = lastResult.frameTime - baseline.frameTime;
-            const fpsSign = deltaFps >= 0 ? '+' : '';
-            const frameSign = deltaFrame >= 0 ? '+' : '';
-            benchmarkDeltaValue.textContent = `${fpsSign}${deltaFps.toFixed(0)} FPS / ${frameSign}${deltaFrame.toFixed(2)} ms`;
-        } else {
-            benchmarkDeltaValue.textContent = '—';
-        }
-    }
-}
-
-function startBenchmark() {
-    if (benchmarkState.running) {
-        return;
-    }
-    let durationSeconds = 5;
-    if (benchmarkDurationInput) {
-        const parsed = parseFloat(benchmarkDurationInput.value);
-        if (!Number.isNaN(parsed)) {
-            durationSeconds = Math.min(30, Math.max(1, parsed));
-            benchmarkDurationInput.value = durationSeconds.toString();
-        }
-    }
-    benchmarkState.durationMs = durationSeconds * 1000;
-    benchmarkState.running = true;
-    benchmarkState.startTime = performance.now();
-    benchmarkState.lastTime = benchmarkState.startTime;
-    benchmarkState.frameTimes = [];
-    benchmarkState.lastResult = null;
-    if (benchmarkStatus) {
-        benchmarkStatus.textContent = 'Benchmark запущен...';
-    }
-    if (benchmarkButton) {
-        benchmarkButton.disabled = true;
-        benchmarkButton.textContent = 'Benchmark...';
-    }
-}
-
-function finishBenchmark() {
-    benchmarkState.running = false;
-    const samples = benchmarkState.frameTimes.length;
-    if (samples > 0) {
-        const total = benchmarkState.frameTimes.reduce((sum, value) => sum + value, 0);
-        const avgFrameTime = total / samples;
-        const avgFps = 1000 / avgFrameTime;
-        benchmarkState.lastResult = {
-            fps: avgFps,
-            frameTime: avgFrameTime,
-            durationMs: benchmarkState.durationMs,
-            timestamp: Date.now(),
-            mode: CONFIG.glowMode
-        };
-        if (!benchmarkBaselines[CONFIG.glowMode]) {
-            benchmarkBaselines[CONFIG.glowMode] = benchmarkState.lastResult;
-            saveBenchmarkBaselines(benchmarkBaselines);
-            if (benchmarkStatus) {
-                benchmarkStatus.textContent = 'Baseline сохранён для этого режима.';
-            }
-        } else if (benchmarkStatus) {
-            benchmarkStatus.textContent = 'Benchmark завершён.';
-        }
-    } else if (benchmarkStatus) {
-        benchmarkStatus.textContent = 'Недостаточно данных для бенчмарка.';
-    }
-
-    if (benchmarkButton) {
-        benchmarkButton.disabled = false;
-        benchmarkButton.textContent = 'Запустить Benchmark';
-    }
-    updateBenchmarkUI();
-}
-
-function updateBenchmark(currentTime) {
-    if (!benchmarkState.running) {
-        return;
-    }
-    const delta = currentTime - benchmarkState.lastTime;
-    benchmarkState.lastTime = currentTime;
-    if (delta > 0) {
-        benchmarkState.frameTimes.push(delta);
-    }
-    if (currentTime - benchmarkState.startTime >= benchmarkState.durationMs) {
-        finishBenchmark();
-    }
-}
-
-if (benchmarkButton) {
-    benchmarkButton.addEventListener('click', startBenchmark);
-}
-benchmarkReady = true;
-updateBenchmarkUI();
-
 function isGlowActive() {
     if (CONFIG.glowBrightness > 0 || CONFIG.velocityGlowMultiplier > 0) {
         return true;
@@ -3600,18 +3372,14 @@ function animate() {
     lastFrameTime = currentTime;
     
     updatePhysics();
-    if (CONFIG.glowMode === 'legacy') {
-        renderer.render(scene, camera);
-    } else {
-        renderOptimizedGlowFrame();
-    }
+    renderOptimizedGlowFrame();
     
     // Обновляем мониторинг производительности каждый кадр для точного подсчёта FPS
     PerformanceMonitor.update();
-    if (typeof updateBenchmark === 'function') {
-        updateBenchmark(currentTime);
-    }
 }
+
+// Debounce для автопереключения пресетов при resize
+let presetSwitchTimeout = null;
 
 window.addEventListener('resize', () => {
     // Обновляем параметры ортографической камеры при изменении размера окна
@@ -3625,6 +3393,16 @@ window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
     updateSizeScale();
     updateGlowRenderTargetSize();
+    
+    // Автопереключение пресетов по ширине окна (с debounce)
+    clearTimeout(presetSwitchTimeout);
+    presetSwitchTimeout = setTimeout(() => {
+        const shouldBeMobile = window.innerWidth < 960;
+        const currentIsMobile = currentPreset === 'mobile';
+        if (shouldBeMobile !== currentIsMobile) {
+            applyPreset(shouldBeMobile ? 'mobile' : 'desktop');
+        }
+    }, 300);
 });
 
 animate();
