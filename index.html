@@ -32,8 +32,8 @@
     <meta property="twitter:image" content="https://puschkarew.github.io/ParticleText/og-image.png">
     
     <!-- Theme Color -->
-    <meta name="theme-color" content="#000000">
-    <meta name="msapplication-TileColor" content="#000000">
+    <meta name="theme-color" content="#1443FF">
+    <meta name="msapplication-TileColor" content="#1443FF">
     
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='40' fill='%23fff'/%3E%3C/svg%3E">
@@ -55,6 +55,22 @@
                 <option value="mobile">Mobile</option>
             </select>
         </div>
+
+        <div class="control-group">
+            <label>
+                Цвет фона
+                <span class="value" id="backgroundColorValue">#1443FF</span>
+            </label>
+            <input type="color" id="backgroundColor" value="#1443FF">
+        </div>
+
+        <div class="control-group">
+            <label>
+                Цвет точек
+                <span class="value" id="pointColorValue">#FFFFFF</span>
+            </label>
+            <input type="color" id="pointColor" value="#FFFFFF">
+        </div>
         
         <div class="control-group" style="display:none">
             <label>
@@ -67,49 +83,49 @@
         <div class="control-group">
             <label>
                 Размер точек
-                <span class="value" id="pointSizeValue">4</span>
+                <span class="value" id="pointSizeValue">2</span>
             </label>
-            <input type="range" id="pointSize" min="1" max="10" step="0.1" value="4">
+            <input type="range" id="pointSize" min="1" max="10" step="0.1" value="2">
         </div>
-        
+
         <div class="control-group">
             <label>
                 Максимальная яркость
-                <span class="value" id="maxBrightnessValue">100%</span>
+                <span class="value" id="maxBrightnessValue">80%</span>
             </label>
-            <input type="range" id="maxBrightness" min="0" max="100" step="1" value="100">
+            <input type="range" id="maxBrightness" min="0" max="100" step="1" value="80">
         </div>
         
         <div class="control-group">
             <label>
                 Затемнение по глубине
-                <span class="value" id="depthDarkeningStrengthValue">185%</span>
+                <span class="value" id="depthDarkeningStrengthValue">300%</span>
             </label>
-            <input type="range" id="depthDarkeningStrength" min="0" max="300" step="1" value="185">
+            <input type="range" id="depthDarkeningStrength" min="0" max="300" step="1" value="300">
         </div>
         
         <div class="control-group">
             <label>
                 Яркость свечения
-                <span class="value" id="glowBrightnessValue">8%</span>
+                <span class="value" id="glowBrightnessValue">37%</span>
             </label>
-            <input type="range" id="glowBrightness" min="0" max="100" step="1" value="8">
+            <input type="range" id="glowBrightness" min="0" max="100" step="1" value="37">
         </div>
         
         <div class="control-group">
             <label>
                 Радиус свечения
-                <span class="value" id="glowRadiusValue">15x</span>
+                <span class="value" id="glowRadiusValue">24x</span>
             </label>
-            <input type="range" id="glowRadius" min="1" max="50" step="1" value="15">
+            <input type="range" id="glowRadius" min="1" max="50" step="1" value="24">
         </div>
         
         <div class="control-group">
             <label>
                 Свечение от скорости
-                <span class="value" id="velocityGlowMultiplierValue">20%</span>
+                <span class="value" id="velocityGlowMultiplierValue">55%</span>
             </label>
-            <input type="range" id="velocityGlowMultiplier" min="0" max="200" step="5" value="20">
+            <input type="range" id="velocityGlowMultiplier" min="0" max="200" step="5" value="55">
         </div>
         
         <div class="control-group">
@@ -131,73 +147,73 @@
         <div class="control-group">
             <label>
                 Количество точек (вне формы)
-                <span class="value" id="outsideParticleCountValue">200</span>
+                <span class="value" id="outsideParticleCountValue">3600</span>
             </label>
-            <input type="range" id="outsideParticleCount" min="0" max="8000" step="50" value="200">
+            <input type="range" id="outsideParticleCount" min="0" max="8000" step="50" value="3600">
         </div>
         
         <div class="control-group">
             <label>
                 Процент невидимых точек (вне формы)
-                <span class="value" id="outsideInvisiblePercentageValue">0%</span>
+                <span class="value" id="outsideInvisiblePercentageValue">50%</span>
             </label>
-            <input type="range" id="outsideInvisiblePercentage" min="0" max="100" step="1" value="0">
+            <input type="range" id="outsideInvisiblePercentage" min="0" max="100" step="1" value="50">
         </div>
         
         <div class="control-group">
             <label>
                 Сила воздействия
-                <span class="value" id="forceStrengthValue">100</span>
+                <span class="value" id="forceStrengthValue">25</span>
             </label>
-            <input type="range" id="forceStrength" min="5" max="100" step="5" value="100">
+            <input type="range" id="forceStrength" min="5" max="100" step="5" value="25">
         </div>
         
         <div class="control-group">
             <label>
                 Радиус воздействия
-                <span class="value" id="interactionRadiusValue">4</span>
+                <span class="value" id="interactionRadiusValue">5</span>
             </label>
-            <input type="range" id="interactionRadius" min="0.5" max="5" step="0.1" value="4">
+            <input type="range" id="interactionRadius" min="0.5" max="5" step="0.1" value="5">
         </div>
         
         <div class="control-group">
             <label>
                 Жёсткость пружины
-                <span class="value" id="springConstantValue">1.00</span>
+                <span class="value" id="springConstantValue">0.20</span>
             </label>
-            <input type="range" id="springConstant" min="0.1" max="1.0" step="0.05" value="1.00">
+            <input type="range" id="springConstant" min="0.1" max="1.0" step="0.05" value="0.20">
         </div>
         
         <div class="control-group">
             <label>
                 Демпфирование
-                <span class="value" id="dampingValue">0.85</span>
+                <span class="value" id="dampingValue">0.90</span>
             </label>
-            <input type="range" id="damping" min="0.85" max="0.99" step="0.01" value="0.85">
+            <input type="range" id="damping" min="0.85" max="0.99" step="0.01" value="0.90">
         </div>
         
         <div class="control-group">
             <label>
                 Скорость анимации
-                <span class="value" id="timeScaleValue">0.90</span>
+                <span class="value" id="timeScaleValue">0.85</span>
             </label>
-            <input type="range" id="timeScale" min="0.1" max="1.0" step="0.05" value="0.90">
+            <input type="range" id="timeScale" min="0.1" max="1.0" step="0.05" value="0.85">
         </div>
         
         <div class="control-group">
             <label>
                 Скорость пассивного движения
-                <span class="value" id="autonomousMotionStrengthValue">0.02</span>
+                <span class="value" id="autonomousMotionStrengthValue">0.01</span>
             </label>
-            <input type="range" id="autonomousMotionStrength" min="0" max="0.05" step="0.002" value="0.02">
+            <input type="range" id="autonomousMotionStrength" min="0" max="0.05" step="0.002" value="0.01">
         </div>
         
         <div class="control-group">
             <label>
                 Сила разлёта при скролле
-                <span class="value" id="scrollSpreadForceValue">50</span>
+                <span class="value" id="scrollSpreadForceValue">75</span>
             </label>
-            <input type="range" id="scrollSpreadForce" min="0" max="100" step="5" value="50">
+            <input type="range" id="scrollSpreadForce" min="0" max="100" step="5" value="75">
         </div>
         
         <div class="control-group" style="display:none">
@@ -214,9 +230,9 @@
             <div class="control-group">
                 <label>
                     Длительность анимации (мс)
-                    <span class="value" id="loadAnimationDurationValue">2000</span>
+                    <span class="value" id="loadAnimationDurationValue">4000</span>
                 </label>
-                <input type="range" id="loadAnimationDuration" min="2000" max="8000" step="100" value="2000">
+                <input type="range" id="loadAnimationDuration" min="2000" max="8000" step="100" value="4000">
             </div>
             
             <div class="control-group">
@@ -242,7 +258,7 @@
             <div class="control-group">
                 <label style="display: flex; align-items: center; justify-content: space-between;">
                     <span>Включить волны</span>
-                    <input type="checkbox" id="waveEnabled" style="width: auto; margin: 0;">
+                    <input type="checkbox" id="waveEnabled" checked style="width: auto; margin: 0;">
                 </label>
             </div>
             
@@ -257,41 +273,41 @@
             <div class="control-group">
                 <label>
                     Ширина волны
-                    <span class="value" id="waveWidthValue">1.6</span>
+                    <span class="value" id="waveWidthValue">4.2</span>
                 </label>
-                <input type="range" id="waveWidth" min="1.0" max="10.0" step="0.1" value="1.6">
+                <input type="range" id="waveWidth" min="1.0" max="10.0" step="0.1" value="4.2">
             </div>
             
             <div class="control-group">
                 <label>
                     Скорость волны
-                    <span class="value" id="waveSpeedValue">6.0</span>
+                    <span class="value" id="waveSpeedValue">3.5</span>
                 </label>
-                <input type="range" id="waveSpeed" min="1.0" max="20.0" step="0.5" value="6.0">
+                <input type="range" id="waveSpeed" min="1.0" max="20.0" step="0.5" value="3.5">
             </div>
             
             <div class="control-group">
                 <label>
                     Сила волны
-                    <span class="value" id="waveForceValue">1</span>
+                    <span class="value" id="waveForceValue">2</span>
                 </label>
-                <input type="range" id="waveForce" min="0" max="2" step="0.001" value="1">
+                <input type="range" id="waveForce" min="0" max="2" step="0.001" value="2">
             </div>
             
             <div class="control-group">
                 <label>
                     Сила подсвечивания
-                    <span class="value" id="waveGlowIntensityValue">0.75</span>
+                    <span class="value" id="waveGlowIntensityValue">1.00</span>
                 </label>
-                <input type="range" id="waveGlowIntensity" min="0.0" max="1.0" step="0.05" value="0.75">
+                <input type="range" id="waveGlowIntensity" min="0.0" max="1.0" step="0.05" value="1.0">
             </div>
             
             <div class="control-group">
                 <label>
                     Крутизна затухания
-                    <span class="value" id="waveForceFalloffValue">0.5</span>
+                    <span class="value" id="waveForceFalloffValue">1.4</span>
                 </label>
-                <input type="range" id="waveForceFalloff" min="0.1" max="2.0" step="0.1" value="0.5">
+                <input type="range" id="waveForceFalloff" min="0.1" max="2.0" step="0.1" value="1.4">
             </div>
         </div>
         
@@ -316,17 +332,17 @@
             <div class="control-group">
                 <label>
                     Скорость разлёта
-                    <span class="value" id="explosionSpeedValue">0.40</span>
+                    <span class="value" id="explosionSpeedValue">0.20</span>
                 </label>
-                <input type="range" id="explosionSpeed" min="0.1" max="2.0" step="0.1" value="0.4">
+                <input type="range" id="explosionSpeed" min="0.1" max="2.0" step="0.1" value="0.2">
             </div>
             
             <div class="control-group">
                 <label>
                     Длительность разлёта (мс)
-                    <span class="value" id="explosionReturnDelayValue">1500</span>
+                    <span class="value" id="explosionReturnDelayValue">1200</span>
                 </label>
-                <input type="range" id="explosionReturnDelay" min="0" max="3000" step="100" value="1500">
+                <input type="range" id="explosionReturnDelay" min="0" max="3000" step="100" value="1200">
             </div>
         </div>
 

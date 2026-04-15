@@ -33,27 +33,92 @@ window.addEventListener('unhandledrejection', (event) => {
 });
 
 // ========== ПАРАМЕТРЫ ==========
+const PARTICLE_CONFIG_VERSION = 2;
+const DEFAULT_LOAD_ANIMATION_DURATION = 4000;
+const DEFAULT_LOAD_ANIMATION_EASING_CURVE = { p1x: 0.03, p1y: 0.90, p2x: 0.55, p2y: 0.92 };
+
+function cloneLoadAnimationEasingCurve(curve) {
+    return {
+        p1x: curve.p1x,
+        p1y: curve.p1y,
+        p2x: curve.p2x,
+        p2y: curve.p2y
+    };
+}
+
+function isValidLoadAnimationEasingCurve(curve) {
+    if (!curve || typeof curve !== 'object') {
+        return false;
+    }
+    return ['p1x', 'p1y', 'p2x', 'p2y'].every((key) => {
+        const value = curve[key];
+        return typeof value === 'number' && Number.isFinite(value);
+    });
+}
+
+function createDefaultStoredConfig() {
+    return {
+        version: PARTICLE_CONFIG_VERSION,
+        loadAnimationDuration: DEFAULT_LOAD_ANIMATION_DURATION,
+        loadAnimationEasingCurve: cloneLoadAnimationEasingCurve(DEFAULT_LOAD_ANIMATION_EASING_CURVE)
+    };
+}
+
+function persistStoredConfig(config) {
+    localStorage.setItem('particleConfig', JSON.stringify(config));
+}
+
 // Функция загрузки настроек из localStorage
 function loadConfigFromStorage() {
     const saved = localStorage.getItem('particleConfig');
-    if (saved) {
-        try {
-            return JSON.parse(saved);
-        } catch (e) {
-            console.warn('Ошибка загрузки настроек из localStorage:', e);
-        }
+    if (!saved) {
+        return null;
     }
-    return null;
+
+    try {
+        const parsed = JSON.parse(saved);
+        if (!parsed || typeof parsed !== 'object') {
+            return null;
+        }
+
+        if (parsed.version !== PARTICLE_CONFIG_VERSION) {
+            const migratedConfig = createDefaultStoredConfig();
+            persistStoredConfig(migratedConfig);
+            return migratedConfig;
+        }
+
+        const normalizedConfig = {
+            version: PARTICLE_CONFIG_VERSION,
+            loadAnimationDuration: typeof parsed.loadAnimationDuration === 'number' && Number.isFinite(parsed.loadAnimationDuration)
+                ? parsed.loadAnimationDuration
+                : DEFAULT_LOAD_ANIMATION_DURATION,
+            loadAnimationEasingCurve: isValidLoadAnimationEasingCurve(parsed.loadAnimationEasingCurve)
+                ? cloneLoadAnimationEasingCurve(parsed.loadAnimationEasingCurve)
+                : cloneLoadAnimationEasingCurve(DEFAULT_LOAD_ANIMATION_EASING_CURVE)
+        };
+
+        const needsResave = normalizedConfig.loadAnimationDuration !== parsed.loadAnimationDuration
+            || !isValidLoadAnimationEasingCurve(parsed.loadAnimationEasingCurve);
+
+        if (needsResave) {
+            persistStoredConfig(normalizedConfig);
+        }
+
+        return normalizedConfig;
+    } catch (e) {
+        console.warn('Ошибка загрузки настроек из localStorage:', e);
+        return null;
+    }
 }
 
 // Функция сохранения настроек в localStorage
 function saveConfigToStorage() {
     try {
-        const configToSave = {
+        persistStoredConfig({
+            version: PARTICLE_CONFIG_VERSION,
             loadAnimationDuration: CONFIG.loadAnimationDuration,
-            loadAnimationEasingCurve: CONFIG.loadAnimationEasingCurve
-        };
-        localStorage.setItem('particleConfig', JSON.stringify(configToSave));
+            loadAnimationEasingCurve: cloneLoadAnimationEasingCurve(CONFIG.loadAnimationEasingCurve)
+        });
     } catch (e) {
         console.warn('Ошибка сохранения настроек в localStorage:', e);
     }
@@ -62,74 +127,110 @@ function saveConfigToStorage() {
 // Загружаем сохраненные настройки
 const savedConfig = loadConfigFromStorage();
 
-let CONFIG = {
+const DESKTOP_PRESET_CONFIG = {
     particleCount: 10000,
-    outsideParticleCount: 200, // Количество частиц вне SVG формы (независимо от particleCount)
-    outsideInvisiblePercentage: 0, // Процент невидимых точек вне формы (0-100)
-    sphereRadius: 3.0, // Увеличиваем размер текста
-    forceStrength: 100.0,
+    outsideParticleCount: 3600,
+    outsideInvisiblePercentage: 50,
+    sphereRadius: 3.0,
+    forceStrength: 25.0,
     interactionRadius: 5.0,
-    returnSpeed: 0.030, // Оставляем для обратной совместимости, но используем springConstant
-    springConstant: 0.35, // Жёсткость пружины (сила возврата)
-    damping: 0.90, // Коэффициент демпфирования (затухание колебаний, чем ближе к 1, тем сильнее затухание)
-    timeScale: 0.90, // Глобальный множитель скорости анимации (0.5 = в 2 раза медленнее)
-    pointSize: 4, // Размер точек
-    sizeVariation: 0.5, // Максимальная разница размера точек (50% по умолчанию)
-    autonomousMotionStrength: 0.04, // Сила автономного движения точек
-    chaosAngle: 45, // Максимальный угол отклонения направления (градусы)
-    chaosStrength: 0.8, // Сила хаотичности (0-1)
-    tangentialForceRatio: 0.4, // Соотношение тангенциальной силы
-    zAxisStrength: 0.6, // Сила Z-компоненты (глубина)
-    scrollSpreadForce: 75, // Сила разлёта при скролле
-    scrollDepth: 300, // Глубина скролла (vh) - скрыт в UI
+    returnSpeed: 0.030,
+    springConstant: 0.20,
+    damping: 0.90,
+    timeScale: 0.85,
+    pointSize: 2,
+    backgroundColor: '#1443ff',
+    pointColor: '#ffffff',
+    sizeVariation: 0.5,
+    autonomousMotionStrength: 0.01,
+    chaosAngle: 45,
+    chaosStrength: 0.8,
+    tangentialForceRatio: 0.4,
+    zAxisStrength: 0.6,
+    scrollSpreadForce: 75,
+    scrollDepth: 300,
+    loadAnimationDuration: DEFAULT_LOAD_ANIMATION_DURATION,
+    loadAnimationEasingCurve: DEFAULT_LOAD_ANIMATION_EASING_CURVE,
+    waveEnabled: true,
+    waveInterval: 8000,
+    waveSpeed: 3.5,
+    waveWidth: 4.2,
+    waveForce: 0.002,
+    waveGlowIntensity: 1.0,
+    waveForceFalloff: 1.4,
+    maxBrightness: 0.8,
+    depthDarkeningStrength: 3.0,
+    glowBrightness: 0.37,
+    glowRadius: 24.0,
+    velocityGlowMultiplier: 0.55,
+    explosionEnabled: true,
+    explosionForce: 10.0,
+    explosionSpeed: 0.20,
+    explosionReturnDelay: 1200,
+    explosionGlowIntensity: 0.8,
+    explosionGlowDuration: 500,
+    paddingX: 0.15,
+    paddingY: 0.30
+};
+
+const MOBILE_PRESET_CONFIG = {
+    ...DESKTOP_PRESET_CONFIG,
+    particleCount: 7500,
+    autonomousMotionStrength: 0.02
+};
+
+const PRESET_CONFIG_KEYS = Object.keys(DESKTOP_PRESET_CONFIG);
+
+let CONFIG = {
+    ...DESKTOP_PRESET_CONFIG,
     isLoadingAnimation: true, // Флаг активной анимации загрузки
     loadAnimationStartTime: null, // Время начала анимации
-    loadAnimationDuration: savedConfig?.loadAnimationDuration ?? 4000, // Длительность анимации (4 секунды)
-    loadAnimationEasingCurve: savedConfig?.loadAnimationEasingCurve ?? { p1x: 0.42, p1y: 0, p2x: 0.58, p2y: 1 }, // Кривая Безье для управления скоростью (по умолчанию ease-in-out)
-    // Параметры волны
-    waveEnabled: false, // Флаг включения/выключения волны
-    waveInterval: 8000, // Интервал между волнами (мс)
-    waveSpeed: 6.0, // Скорость распространения волны (единиц в секунду) - быстрое прохождение
-    waveWidth: 1.6, // Ширина волны (расстояние от переднего края до заднего) - толще волна
-    waveForce: 0.001, // Сила воздействия на точки (очень subtle - едва заметное движение)
-    waveGlowIntensity: 0.75, // Интенсивность свечения точек в волне (0-1)
-    waveForceFalloff: 0.5, // Крутизна затухания силы волны от центра к краям (0.1-2.0)
+    loadAnimationDuration: savedConfig?.loadAnimationDuration ?? DESKTOP_PRESET_CONFIG.loadAnimationDuration,
+    loadAnimationEasingCurve: savedConfig?.loadAnimationEasingCurve
+        ? { ...savedConfig.loadAnimationEasingCurve }
+        : { ...DESKTOP_PRESET_CONFIG.loadAnimationEasingCurve },
     lastWaveTime: null, // Время последней волны
     waves: [], // Массив активных волн: { radius: number, startTime: number, id: number }
-    maxBrightness: 1.0, // Максимальная яркость точек (0-1, где 1.0 = 100% белый цвет)
-    depthDarkeningStrength: 1.85, // Сила затемнения по глубине (0 = нет эффекта, 1 = максимум)
-    // Параметры свечения точек
-    glowBrightness: 0.08, // Яркость свечения (0 = нет свечения, 1 = максимум)
-    glowRadius: 15.0, // Радиус свечения (прямой множитель размера, 1-50)
-    velocityGlowMultiplier: 0.20, // Множитель свечения от скорости движения точки (0 = нет эффекта, 2 = сильный эффект)
-    // Параметры взрыва по клику
-    explosionEnabled: true, // Флаг включения/выключения взрыва
-    explosionForce: 10.0, // Сила разлёта (дальность)
-    explosionSpeed: 0.20, // Скорость разлёта (множитель, 0.1-2.0)
-    explosionReturnDelay: 1200, // Задержка перед возвратом точек (мс) - чем больше, тем дольше точки остаются разлетевшимися
-    explosionGlowIntensity: 0.8, // Интенсивность подсветки (0-1)
-    explosionGlowDuration: 500, // Длительность подсветки (мс)
-    explosions: [], // Массив активных взрывов: { position: Vector3, startTime: number, id: number }
-    // Параметры отступов формы от краёв viewport (в долях, 0.15 = 15%)
-    paddingX: 0.15, // Отступ слева и справа (15%)
-    paddingY: 0.30  // Отступ сверху и снизу (30%)
+    explosions: [] // Массив активных взрывов: { position: Vector3, startTime: number, id: number }
 };
+
+function normalizeHexColor(value, fallback) {
+    const candidate = typeof value === 'string' ? value.trim() : '';
+    if (/^#[0-9a-fA-F]{6}$/.test(candidate)) {
+        return candidate.toLowerCase();
+    }
+    return fallback.toLowerCase();
+}
+
+function formatHexColor(value, fallback) {
+    return normalizeHexColor(value, fallback).toUpperCase();
+}
+
+function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, (char) => {
+        const entities = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        };
+        return entities[char] || char;
+    });
+}
 
 // ========== НАСТРОЙКА SVG ==========
 // Конфигурация пресетов Desktop/Mobile
 const PRESETS = {
     desktop: {
         name: 'Desktop',
-        svgPath: 'Starting Point.svg',
-        pointSize: 4,
-        particleCount: 10000
+        svgPath: 'Break the Shape.svg',
+        config: DESKTOP_PRESET_CONFIG
     },
     mobile: {
         name: 'Mobile',
-        svgPath: 'Starting Point Mobile.svg',
-        pointSize: 2,
-        particleCount: 7500,
-        autonomousMotionStrength: 0.02
+        svgPath: 'Break the Shape.svg',
+        config: MOBILE_PRESET_CONFIG
     }
 };
 
@@ -217,7 +318,8 @@ function createGlowTexture(size = 256) {
 
 // ========== ИНИЦИАЛИЗАЦИЯ ==========
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x000000);
+const sceneBackgroundColor = new THREE.Color(CONFIG.backgroundColor);
+scene.background = sceneBackgroundColor;
 const glowScene = new THREE.Scene();
 const compositeScene = new THREE.Scene();
 const compositeCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
@@ -246,8 +348,37 @@ const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPr
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 // Настраиваем рендерер для правильного смешивания прозрачности
-renderer.setClearColor(0x000000, 1);
+renderer.setClearColor(sceneBackgroundColor, 1);
 document.body.appendChild(renderer.domElement);
+
+const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+const tileColorMeta = document.querySelector('meta[name="msapplication-TileColor"]');
+const pointTintColor = new THREE.Color(CONFIG.pointColor);
+
+function syncBackgroundColor() {
+    const normalized = normalizeHexColor(CONFIG.backgroundColor, '#fdb4df');
+    CONFIG.backgroundColor = normalized;
+    sceneBackgroundColor.set(normalized);
+    scene.background = sceneBackgroundColor;
+    renderer.setClearColor(sceneBackgroundColor, 1);
+    document.body.style.backgroundColor = normalized;
+    if (themeColorMeta) themeColorMeta.setAttribute('content', normalized);
+    if (tileColorMeta) tileColorMeta.setAttribute('content', normalized);
+}
+
+function syncPointColor() {
+    const normalized = normalizeHexColor(CONFIG.pointColor, '#ffffff');
+    CONFIG.pointColor = normalized;
+    pointTintColor.set(normalized);
+    if (geometry && geometry.attributes.color) {
+        geometry.attributes.color.needsUpdate = true;
+    }
+}
+
+function renderSvgLoadError() {
+    const escapedSvgPath = escapeHtml(SVG_PATH);
+    document.body.innerHTML = `<div style="color: white; padding: 20px; font-family: monospace; background: #222; position: fixed; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; z-index: 10000; flex-direction: column; text-align: center;"><h2>Ошибка загрузки SVG</h2><p>Не удалось загрузить SVG файл "${escapedSvgPath}".</p><p style="color: #999; font-size: 12px; margin-top: 20px;">Проверьте консоль браузера (F12) для деталей.</p></div>`;
+}
 
 let glowRenderTarget = null;
 let glowCompositeMaterial = null;
@@ -323,7 +454,9 @@ let svgGeometry = null;
 let cloudCenter = new THREE.Vector3(0, 0, 0); // Центр облака частиц
 let totalParticleCount = CONFIG.particleCount; // Общее количество точек (внутри + снаружи SVG)
 
-const circleTexture = createCircleTexture(64);
+syncBackgroundColor();
+syncPointColor();
+
 const glowTexture = createGlowTexture();
 
 // Функция генерации размеров частиц
@@ -357,7 +490,7 @@ const GLOW_RENDER_SCALE_DESKTOP = 0.5;
 const GLOW_RENDER_SCALE_MOBILE = 0.33;
 const GLOW_BRIGHTNESS_MULTIPLIER = 1.5;
 
-// Вершинный шейдер (core-only): без увеличения радиуса
+// Вершинный шейдер частиц: sharp core, blur создается отдельным постпроходом
 const coreVertexShader = `
     attribute float size;
     attribute vec3 color;
@@ -372,21 +505,16 @@ const coreVertexShader = `
     }
 `;
 
-// Фрагментный шейдер (core-only): только ядро точки
+// Фрагментный шейдер частиц: только четкое ядро
 const coreFragmentShader = `
-    uniform sampler2D pointTexture;
     varying vec3 vColor;
     
     void main() {
-        vec2 centered = gl_PointCoord - 0.5;
-        float dist = length(centered) * 2.0; // 0 в центре, 1 на краях
-        float coreMask = 1.0 - smoothstep(0.9, 1.0, dist);
-        
-        vec4 coreColor = texture2D(pointTexture, gl_PointCoord);
-        coreColor.a *= coreMask;
-        
-        vec3 coreContrib = coreColor.rgb * coreColor.a;
-        gl_FragColor = vec4(vColor * coreContrib, coreColor.a);
+        vec2 centered = gl_PointCoord * 2.0 - 1.0;
+        float dist = length(centered);
+        float alpha = 1.0 - smoothstep(0.90, 1.0, dist);
+        vec3 finalColor = vColor * alpha;
+        gl_FragColor = vec4(finalColor, alpha);
     }
 `;
 
@@ -438,7 +566,6 @@ const calculateSizeScale = () => {
 
 const coreMaterial = new THREE.ShaderMaterial({
     uniforms: {
-        pointTexture: { value: circleTexture },
         sizeScale: { value: calculateSizeScale() }
     },
     vertexShader: coreVertexShader,
@@ -476,6 +603,133 @@ const updateGlowUniforms = () => {
 updateSizeScale();
 updateGlowUniforms();
 ensureGlowRenderTarget();
+
+const CONTROL_BINDINGS = [
+    ['pointSize', 'pointSize', 'pointSizeValue'],
+    ['maxBrightness', 'maxBrightness', 'maxBrightnessValue'],
+    ['depthDarkeningStrength', 'depthDarkeningStrength', 'depthDarkeningStrengthValue'],
+    ['glowBrightness', 'glowBrightness', 'glowBrightnessValue'],
+    ['glowRadius', 'glowRadius', 'glowRadiusValue'],
+    ['velocityGlowMultiplier', 'velocityGlowMultiplier', 'velocityGlowMultiplierValue'],
+    ['sizeVariation', 'sizeVariation', 'sizeVariationValue'],
+    ['particleCount', 'particleCount', 'particleCountValue'],
+    ['outsideParticleCount', 'outsideParticleCount', 'outsideParticleCountValue'],
+    ['outsideInvisiblePercentage', 'outsideInvisiblePercentage', 'outsideInvisiblePercentageValue'],
+    ['forceStrength', 'forceStrength', 'forceStrengthValue'],
+    ['interactionRadius', 'interactionRadius', 'interactionRadiusValue'],
+    ['springConstant', 'springConstant', 'springConstantValue'],
+    ['damping', 'damping', 'dampingValue'],
+    ['timeScale', 'timeScale', 'timeScaleValue'],
+    ['autonomousMotionStrength', 'autonomousMotionStrength', 'autonomousMotionStrengthValue'],
+    ['scrollSpreadForce', 'scrollSpreadForce', 'scrollSpreadForceValue'],
+    ['scrollDepth', 'scrollDepth', 'scrollDepthValue'],
+    ['loadAnimationDuration', 'loadAnimationDuration', 'loadAnimationDurationValue'],
+    ['waveInterval', 'waveInterval', 'waveIntervalValue'],
+    ['waveWidth', 'waveWidth', 'waveWidthValue'],
+    ['waveSpeed', 'waveSpeed', 'waveSpeedValue'],
+    ['waveForce', 'waveForce', 'waveForceValue'],
+    ['waveGlowIntensity', 'waveGlowIntensity', 'waveGlowIntensityValue'],
+    ['waveForceFalloff', 'waveForceFalloff', 'waveForceFalloffValue'],
+    ['explosionForce', 'explosionForce', 'explosionForceValue'],
+    ['explosionSpeed', 'explosionSpeed', 'explosionSpeedValue'],
+    ['explosionReturnDelay', 'explosionReturnDelay', 'explosionReturnDelayValue']
+];
+
+const COLOR_CONTROL_BINDINGS = [
+    ['backgroundColor', 'backgroundColor', 'backgroundColorValue'],
+    ['pointColor', 'pointColor', 'pointColorValue']
+];
+
+const TOGGLE_CONTROL_BINDINGS = [
+    ['waveEnabled', 'waveEnabled'],
+    ['explosionEnabled', 'explosionEnabled']
+];
+
+function getSliderValueForControl(id, configKey) {
+    if (id === 'waveForce') {
+        return CONFIG[configKey] * 1000;
+    }
+    if (id === 'maxBrightness' || id === 'depthDarkeningStrength' || id === 'glowBrightness' || id === 'velocityGlowMultiplier') {
+        return CONFIG[configKey] * 100;
+    }
+    return CONFIG[configKey];
+}
+
+function formatSliderValueText(id, sliderValue) {
+    if (id === 'sizeVariation') {
+        return `${Math.round(sliderValue * 100)}%`;
+    }
+    if (id === 'outsideInvisiblePercentage') {
+        return `${Math.round(sliderValue)}%`;
+    }
+    if (id === 'maxBrightness' || id === 'depthDarkeningStrength' || id === 'glowBrightness' || id === 'velocityGlowMultiplier') {
+        return `${Math.round(sliderValue)}%`;
+    }
+    if (id === 'glowRadius') {
+        return `${Math.round(sliderValue)}x`;
+    }
+    if (id === 'waveInterval') {
+        return `${sliderValue.toFixed(0)} мс`;
+    }
+    if (id === 'waveForce') {
+        return sliderValue.toFixed(0);
+    }
+    if (id === 'waveWidth' || id === 'waveSpeed' || id === 'waveForceFalloff') {
+        return sliderValue.toFixed(1);
+    }
+    if (id === 'waveGlowIntensity' || id === 'autonomousMotionStrength' || id === 'springConstant' || id === 'damping' || id === 'explosionSpeed') {
+        return sliderValue.toFixed(2);
+    }
+    if (sliderValue < 1) {
+        return sliderValue.toFixed(2);
+    }
+    return sliderValue.toFixed(0);
+}
+
+function syncNumericControlUI(id, configKey, valueId) {
+    const slider = document.getElementById(id);
+    const valueDisplay = document.getElementById(valueId);
+    if (!slider || !valueDisplay) {
+        return;
+    }
+    const sliderValue = getSliderValueForControl(id, configKey);
+    slider.value = sliderValue;
+    valueDisplay.textContent = formatSliderValueText(id, sliderValue);
+}
+
+function syncColorControlUI(id, configKey, valueId) {
+    const input = document.getElementById(id);
+    const valueDisplay = document.getElementById(valueId);
+    if (!input || !valueDisplay) {
+        return;
+    }
+    const normalized = normalizeHexColor(CONFIG[configKey], DESKTOP_PRESET_CONFIG[configKey]);
+    input.value = normalized;
+    valueDisplay.textContent = formatHexColor(normalized, DESKTOP_PRESET_CONFIG[configKey]);
+}
+
+function syncToggleControlUI(id, configKey) {
+    const input = document.getElementById(id);
+    if (input) {
+        input.checked = Boolean(CONFIG[configKey]);
+    }
+}
+
+function syncAllControlsFromConfig() {
+    const presetSelect = document.getElementById('presetSelect');
+    const presetValue = document.getElementById('presetValue');
+
+    if (presetSelect) presetSelect.value = currentPreset;
+    if (presetValue) presetValue.textContent = PRESETS[currentPreset]?.name || currentPreset;
+
+    COLOR_CONTROL_BINDINGS.forEach(([id, configKey, valueId]) => syncColorControlUI(id, configKey, valueId));
+    CONTROL_BINDINGS.forEach(([id, configKey, valueId]) => syncNumericControlUI(id, configKey, valueId));
+    TOGGLE_CONTROL_BINDINGS.forEach(([id, configKey]) => syncToggleControlUI(id, configKey));
+
+    syncBackgroundColor();
+    syncPointColor();
+    updateGlowUniforms();
+}
 
 function detachPoints(pointsObject) {
     if (!pointsObject) {
@@ -980,6 +1234,9 @@ async function generateParticlesFromSVG() {
     const tempColors = new Float32Array(CONFIG.particleCount * 3);
     const tempSizes = new Float32Array(CONFIG.particleCount);
     const tempBaseSizes = new Float32Array(CONFIG.particleCount);
+    const tintR = pointTintColor.r;
+    const tintG = pointTintColor.g;
+    const tintB = pointTintColor.b;
     
     // Генерируем размеры частиц для временных массивов
     const baseSize = CONFIG.pointSize;
@@ -1025,10 +1282,10 @@ async function generateParticlesFromSVG() {
         tempVelocities[i3 + 1] = 0;
         tempVelocities[i3 + 2] = 0;
         
-        // Инициализируем цвета как белые (1, 1, 1)
-        tempColors[i3] = 1.0;
-        tempColors[i3 + 1] = 1.0;
-        tempColors[i3 + 2] = 1.0;
+        // Инициализируем цвета текущим базовым tint
+        tempColors[i3] = tintR;
+        tempColors[i3 + 1] = tintG;
+        tempColors[i3 + 2] = tintB;
         particlesCreated++;
     }
     
@@ -1216,10 +1473,10 @@ async function generateParticlesFromSVG() {
         newSizes[baseIndex + i] = generatedSize;
         newBaseSizes[baseIndex + i] = generatedSize; // Сохраняем базовый размер
         
-        // Инициализируем цвета как белые
-        newColors[i3] = 1.0;
-        newColors[i3 + 1] = 1.0;
-        newColors[i3 + 2] = 1.0;
+        // Инициализируем цвета текущим базовым tint
+        newColors[i3] = tintR;
+        newColors[i3 + 1] = tintG;
+        newColors[i3 + 2] = tintB;
     }
     
     
@@ -1344,13 +1601,6 @@ async function recreateParticles() {
     
     // Очищаем старую геометрию после добавления нового объекта
     if (oldGeometry && oldGeometry !== geometry) {
-        // Очищаем все атрибуты геометрии
-        const attrs = oldGeometry.attributes;
-        for (const key in attrs) {
-            if (attrs[key] instanceof THREE.BufferAttribute) {
-                attrs[key].dispose();
-            }
-        }
         oldGeometry.dispose();
     }
     
@@ -1403,19 +1653,17 @@ async function applyPreset(presetName, skipRecreate = false) {
     
     // Обновляем путь к SVG
     SVG_PATH = preset.svgPath;
-    
-    // Обновляем размер точек
-    CONFIG.pointSize = preset.pointSize;
-    
-    // Обновляем количество частиц
-    if (preset.particleCount) {
-        CONFIG.particleCount = preset.particleCount;
-    }
-    
-    // Обновляем скорость пассивного движения
-    if (preset.autonomousMotionStrength !== undefined) {
-        CONFIG.autonomousMotionStrength = preset.autonomousMotionStrength;
-    }
+
+    PRESET_CONFIG_KEYS.forEach((key) => {
+        const value = preset.config[key];
+        CONFIG[key] = value && typeof value === 'object' && !Array.isArray(value)
+            ? { ...value }
+            : value;
+    });
+
+    CONFIG.waves = [];
+    CONFIG.explosions = [];
+    CONFIG.lastWaveTime = null;
     
     // Очищаем кэш SVG для загрузки нового файла
     cachedSVGData = null;
@@ -1423,23 +1671,14 @@ async function applyPreset(presetName, skipRecreate = false) {
     cachedSVGBaseSize = null;
     cachedSVGWidth = null;
     cachedSVGHeight = null;
-    
-    // Обновляем UI dropdown и слайдера
-    const presetSelect = document.getElementById('presetSelect');
-    const presetValue = document.getElementById('presetValue');
-    const pointSizeSlider = document.getElementById('pointSize');
-    const pointSizeValue = document.getElementById('pointSizeValue');
-    
-    if (presetSelect) presetSelect.value = presetName;
-    if (presetValue) presetValue.textContent = preset.name;
-    if (pointSizeSlider) pointSizeSlider.value = preset.pointSize;
-    if (pointSizeValue) pointSizeValue.textContent = preset.pointSize;
+
+    syncAllControlsFromConfig();
     
     // Пересоздаём частицы с новым SVG (если не пропускаем)
     if (!skipRecreate && isInitialized) {
         await recreateParticles();
-        // Обновляем размеры точек после пересоздания
-        updateParticleSizes();
+        setupCanvasResolution();
+        drawCurve();
     }
 }
 
@@ -1475,7 +1714,7 @@ let isInitialized = false;
         console.log('Инициализация завершена успешно');
     } catch (error) {
         console.error('Ошибка при инициализации SVG:', error);
-        document.body.innerHTML = '<div style="color: white; padding: 20px; font-family: monospace; background: #222; position: fixed; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; z-index: 10000; flex-direction: column; text-align: center;"><h2>Ошибка загрузки SVG</h2><p>Не удалось загрузить SVG файл "Starting Point.svg".</p><p style="color: #999; font-size: 12px; margin-top: 20px;">Проверьте консоль браузера (F12) для деталей.</p></div>';
+        renderSvgLoadError();
     }
 })();
 
@@ -1757,6 +1996,9 @@ function updatePhysics() {
         const colorsArray = geometry.attributes.color ? geometry.attributes.color.array : null;
         if (colorsArray) {
             const camZ = camera.position.z;
+            const tintR = pointTintColor.r;
+            const tintG = pointTintColor.g;
+            const tintB = pointTintColor.b;
             // Используем те же фиксированные параметры, что и после анимации
             const fixedMinDistance = 0;
             const fixedMaxDistance = 70;
@@ -1778,9 +2020,9 @@ function updatePhysics() {
                 const brightness = 1.0 - normalizedDistance * CONFIG.depthDarkeningStrength;
                 const clampedBrightness = Math.max(0.0, Math.min(1.0, brightness));
                 
-                colorsArray[i3] = clampedBrightness;
-                colorsArray[i3 + 1] = clampedBrightness;
-                colorsArray[i3 + 2] = clampedBrightness;
+                colorsArray[i3] = tintR * clampedBrightness;
+                colorsArray[i3 + 1] = tintG * clampedBrightness;
+                colorsArray[i3 + 2] = tintB * clampedBrightness;
             }
             
             geometry.attributes.color.needsUpdate = true;
@@ -2251,6 +2493,9 @@ function updatePhysics() {
     // Точки дальше от камеры немного темнее (регулируется CONFIG.depthDarkeningStrength)
     if (colorsArray) {
         const brightnessScale = CONFIG.maxBrightness;
+        const tintR = pointTintColor.r;
+        const tintG = pointTintColor.g;
+        const tintB = pointTintColor.b;
         
         for (let i = 0; i < actualParticleCount && i < distanceBuffer.length; i++) {
             const i3 = i * 3;
@@ -2364,9 +2609,9 @@ function updatePhysics() {
             // Ограничиваем финальную яркость до 1.0
             finalBrightness = Math.min(finalBrightness, 1.0);
             
-            colorsArray[i3] = finalBrightness;
-            colorsArray[i3 + 1] = finalBrightness;
-            colorsArray[i3 + 2] = finalBrightness;
+            colorsArray[i3] = tintR * finalBrightness;
+            colorsArray[i3 + 1] = tintG * finalBrightness;
+            colorsArray[i3 + 2] = tintB * finalBrightness;
             
         }
     }
@@ -2421,41 +2666,11 @@ toggleBtn.addEventListener('click', () => {
 function setupControl(id, configKey, valueId) {
     const slider = document.getElementById(id);
     const valueDisplay = document.getElementById(valueId);
-    
-    // ===== ИНИЦИАЛИЗАЦИЯ: устанавливаем slider.value и valueDisplay из CONFIG =====
-    let sliderValue;
-    // Преобразование CONFIG → slider (обратное к тому, что делается в input handler)
-    if (id === 'waveForce') {
-        sliderValue = CONFIG[configKey] * 1000;
-    } else if (id === 'maxBrightness' || id === 'depthDarkeningStrength' || id === 'glowBrightness') {
-        sliderValue = CONFIG[configKey] * 100;
-    } else if (id === 'velocityGlowMultiplier') {
-        sliderValue = CONFIG[configKey] * 100;
-    } else {
-        sliderValue = CONFIG[configKey];
+    if (!slider || !valueDisplay) {
+        return;
     }
-    slider.value = sliderValue;
     
-    // Форматирование valueDisplay (та же логика, что и в input handler)
-    if (id === 'sizeVariation') {
-        valueDisplay.textContent = Math.round(sliderValue * 100) + '%';
-    } else if (id === 'maxBrightness' || id === 'depthDarkeningStrength' || id === 'glowBrightness' || id === 'velocityGlowMultiplier') {
-        valueDisplay.textContent = Math.round(sliderValue) + '%';
-    } else if (id === 'glowRadius') {
-        valueDisplay.textContent = Math.round(sliderValue) + 'x';
-    } else if (id === 'waveInterval') {
-        valueDisplay.textContent = sliderValue.toFixed(0) + ' мс';
-    } else if (id === 'waveForce') {
-        valueDisplay.textContent = sliderValue.toFixed(0);
-    } else if (id === 'waveWidth' || id === 'waveSpeed' || id === 'waveForceFalloff') {
-        valueDisplay.textContent = sliderValue.toFixed(1);
-    } else if (id === 'waveGlowIntensity' || id === 'autonomousMotionStrength' || id === 'springConstant' || id === 'damping') {
-        valueDisplay.textContent = sliderValue.toFixed(2);
-    } else if (sliderValue < 1) {
-        valueDisplay.textContent = sliderValue.toFixed(2);
-    } else {
-        valueDisplay.textContent = sliderValue.toFixed(0);
-    }
+    syncNumericControlUI(id, configKey, valueId);
     
     slider.addEventListener('input', (e) => {
         const value = parseFloat(e.target.value);
@@ -2475,27 +2690,8 @@ function setupControl(id, configKey, valueId) {
         } else {
             CONFIG[configKey] = value;
         }
-        
-        // Форматирование значения в зависимости от параметра
-        if (id === 'sizeVariation') {
-            valueDisplay.textContent = Math.round(value * 100) + '%';
-        } else if (id === 'maxBrightness' || id === 'depthDarkeningStrength' || id === 'glowBrightness' || id === 'velocityGlowMultiplier') {
-            valueDisplay.textContent = Math.round(value) + '%';
-        } else if (id === 'glowRadius') {
-            valueDisplay.textContent = Math.round(value) + 'x';
-        } else if (id === 'waveInterval') {
-            valueDisplay.textContent = value.toFixed(0) + ' мс';
-        } else if (id === 'waveForce') {
-            valueDisplay.textContent = value.toFixed(0); // Показываем целое число
-        } else if (id === 'waveWidth' || id === 'waveSpeed' || id === 'waveForceFalloff') {
-            valueDisplay.textContent = value.toFixed(1); // Показываем 1 знак для ширины, скорости и крутизны затухания
-        } else if (id === 'waveGlowIntensity' || id === 'autonomousMotionStrength' || id === 'springConstant' || id === 'damping') {
-            valueDisplay.textContent = value.toFixed(2);
-        } else if (value < 1) {
-            valueDisplay.textContent = value.toFixed(2);
-        } else {
-            valueDisplay.textContent = value.toFixed(0);
-        }
+
+        valueDisplay.textContent = formatSliderValueText(id, value);
         
         // Обновляем размеры частиц при изменении pointSize или sizeVariation
         if (id === 'pointSize' || id === 'sizeVariation') {
@@ -2522,6 +2718,32 @@ function setupControl(id, configKey, valueId) {
             if (geometry && geometry.attributes.size) {
                 geometry.attributes.size.needsUpdate = true;
             }
+        }
+
+    });
+}
+
+function setupColorControl(id, configKey, valueId, onChange) {
+    const input = document.getElementById(id);
+    const valueDisplay = document.getElementById(valueId);
+    if (!input || !valueDisplay) {
+        return;
+    }
+
+    const syncInputState = (value) => {
+        const normalized = normalizeHexColor(value, CONFIG[configKey]);
+        input.value = normalized;
+        valueDisplay.textContent = formatHexColor(normalized, CONFIG[configKey]);
+        return normalized;
+    };
+
+    syncInputState(CONFIG[configKey]);
+
+    input.addEventListener('input', (event) => {
+        const normalized = syncInputState(event.target.value);
+        CONFIG[configKey] = normalized;
+        if (onChange) {
+            onChange();
         }
     });
 }
@@ -2551,6 +2773,8 @@ if (presetSelect) {
     });
 }
 
+setupColorControl('backgroundColor', 'backgroundColor', 'backgroundColorValue', syncBackgroundColor);
+setupColorControl('pointColor', 'pointColor', 'pointColorValue', syncPointColor);
 setupControl('pointSize', 'pointSize', 'pointSizeValue');
 setupControl('maxBrightness', 'maxBrightness', 'maxBrightnessValue');
 setupControl('depthDarkeningStrength', 'depthDarkeningStrength', 'depthDarkeningStrengthValue');
@@ -2625,7 +2849,7 @@ if (savedConfig) {
         document.getElementById('loadAnimationDurationValue').textContent = savedConfig.loadAnimationDuration.toFixed(0);
     }
     if (savedConfig.loadAnimationEasingCurve) {
-        CONFIG.loadAnimationEasingCurve = savedConfig.loadAnimationEasingCurve;
+        CONFIG.loadAnimationEasingCurve = cloneLoadAnimationEasingCurve(savedConfig.loadAnimationEasingCurve);
     }
 }
 
@@ -3338,25 +3562,35 @@ function isGlowActive() {
 function renderOptimizedGlowFrame() {
     ensureGlowRenderTarget();
     const prevAutoClear = renderer.autoClear;
+    const previousClearAlpha = renderer.getClearAlpha();
+    const previousClearColor = renderer.getClearColor(new THREE.Color());
+    const previousSceneBackground = scene.background;
     renderer.autoClear = false;
 
     if (isGlowActive() && glowPoints) {
         renderer.setRenderTarget(glowRenderTarget);
+        renderer.setClearColor(0x000000, 0);
         renderer.clear();
         renderer.render(glowScene, camera);
     } else {
         renderer.setRenderTarget(glowRenderTarget);
+        renderer.setClearColor(0x000000, 0);
         renderer.clear();
     }
 
     renderer.setRenderTarget(null);
+    renderer.setClearColor(sceneBackgroundColor, 1);
     renderer.clear();
+
+    scene.background = null;
     renderer.render(scene, camera);
+    scene.background = previousSceneBackground;
 
     if (glowCompositeMaterial) {
         renderer.render(compositeScene, compositeCamera);
     }
 
+    renderer.setClearColor(previousClearColor, previousClearAlpha);
     renderer.autoClear = prevAutoClear;
 }
 
