@@ -16,7 +16,7 @@ ParticleText is a static, no-build-step demo: thousands of points sample an SVG 
 
 [https://puschkarew.github.io/ParticleText/](https://puschkarew.github.io/ParticleText/)
 
-The site is published with GitHub Pages from the **`Optimised`** branch (see [`.github/workflows/deploy-optimised.yml`](.github/workflows/deploy-optimised.yml)). Confirm in your repository **Settings → Pages** that the published branch matches your expectations.
+The site is published with GitHub Pages from the **`main`** branch (see [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml)). Confirm in your repository **Settings → Pages** that the published source matches your expectations (GitHub Actions).
 
 ## Features
 
