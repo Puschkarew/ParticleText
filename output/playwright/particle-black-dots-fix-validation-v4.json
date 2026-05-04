@@ -1,0 +1,57 @@
+{
+  "mode": "fix-app-bugs headed validation",
+  "timestamp": "2026-04-15T16:27:48.135Z",
+  "appUrl": "http://localhost:8000",
+  "bootstrapVerdict": {
+    "canInstrumentFromBrowser": true,
+    "mode": "browser-fetch",
+    "headedEvidence": "unverified"
+  },
+  "hypotheses": [
+    {
+      "hypothesis": "transparent-black blur targets plus straight-alpha compositing create dark halos and black dots",
+      "verdict": "confirmed"
+    },
+    {
+      "hypothesis": "fullscreen quad UV/viewport mismatch causes the artifact",
+      "verdict": "rejected as primary cause"
+    }
+  ],
+  "scenarios": {
+    "isolated": {
+      "stateAfterBlur0": {
+        "preset": "desktop",
+        "particleBlurSlider": "0",
+        "particleBlurText": "0%",
+        "glowBrightness": "0",
+        "velocityGlowMultiplier": "0",
+        "waveEnabled": false,
+        "autonomousMotionStrength": "0",
+        "backgroundColor": "#1443ff"
+      },
+      "screenshots": {
+        "blur35": "/Users/vladimirpuskarev/Library/Mobile Documents/com~apple~CloudDocs/Codex/Particle Text/output/playwright/particle-black-dots-fixed-v4-isolated.png",
+        "blur0": "/Users/vladimirpuskarev/Library/Mobile Documents/com~apple~CloudDocs/Codex/Particle Text/output/playwright/particle-black-dots-fixed-v4-isolated-blur-0.png"
+      }
+    },
+    "default": {
+      "stateAfterResize": {
+        "preset": "desktop",
+        "particleBlurSlider": "0",
+        "particleBlurText": "0%",
+        "glowBrightness": "37",
+        "velocityGlowMultiplier": "55",
+        "waveEnabled": true,
+        "autonomousMotionStrength": "0.01",
+        "backgroundColor": "#1443ff"
+      },
+      "screenshots": {
+        "blur35": "/Users/vladimirpuskarev/Library/Mobile Documents/com~apple~CloudDocs/Codex/Particle Text/output/playwright/particle-black-dots-fixed-v4-default.png",
+        "blur0": "/Users/vladimirpuskarev/Library/Mobile Documents/com~apple~CloudDocs/Codex/Particle Text/output/playwright/particle-black-dots-fixed-v4-default-blur-0.png",
+        "resize": "/Users/vladimirpuskarev/Library/Mobile Documents/com~apple~CloudDocs/Codex/Particle Text/output/playwright/particle-black-dots-fixed-v4-resize.png"
+      }
+    }
+  },
+  "consoleErrors": [],
+  "pageErrors": []
+}

@@ -1,0 +1,29 @@
+{
+  "repro": {
+    "path": "/Users/vladimirpuskarev/Library/Mobile Documents/com~apple~CloudDocs/Codex/Particle Text/output/playwright/particle-black-dots-repro.png",
+    "width": 1020,
+    "height": 1024,
+    "dark_pixels_lt65": 24615,
+    "very_dark_pixels_lt40": 22422,
+    "dark_ratio_lt65": 0.023567,
+    "very_dark_ratio_lt40": 0.021467
+  },
+  "isolated_fixed": {
+    "path": "/Users/vladimirpuskarev/Library/Mobile Documents/com~apple~CloudDocs/Codex/Particle Text/output/playwright/particle-black-dots-steady-isolated-blur35.png",
+    "width": 860,
+    "height": 900,
+    "dark_pixels_lt65": 56676,
+    "very_dark_pixels_lt40": 52961,
+    "dark_ratio_lt65": 0.073225,
+    "very_dark_ratio_lt40": 0.068425
+  },
+  "default_fixed": {
+    "path": "/Users/vladimirpuskarev/Library/Mobile Documents/com~apple~CloudDocs/Codex/Particle Text/output/playwright/particle-black-dots-steady-default-blur35.png",
+    "width": 860,
+    "height": 900,
+    "dark_pixels_lt65": 56656,
+    "very_dark_pixels_lt40": 50157,
+    "dark_ratio_lt65": 0.073199,
+    "very_dark_ratio_lt40": 0.064802
+  }
+}

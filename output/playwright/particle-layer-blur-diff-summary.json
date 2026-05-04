@@ -1,0 +1,66 @@
+{
+  "full": {
+    "image_a": "output/playwright/particle-layer-blur-full-0.png",
+    "image_b": "output/playwright/particle-layer-blur-full-35.png",
+    "mean_rgb_diff": [
+      2.0472,
+      2.4934,
+      1.6241
+    ],
+    "bbox": [
+      0,
+      0,
+      1440,
+      1024
+    ],
+    "non_zero_pixels": 950335
+  },
+  "isolated": {
+    "image_a": "output/playwright/particle-layer-blur-isolated-0.png",
+    "image_b": "output/playwright/particle-layer-blur-isolated-35.png",
+    "mean_rgb_diff": [
+      0.7778,
+      1.3328,
+      5.5182
+    ],
+    "bbox": [
+      0,
+      0,
+      1440,
+      1024
+    ],
+    "non_zero_pixels": 897000
+  },
+  "curve_restore": {
+    "image_a": "output/playwright/particle-layer-blur-curve-clean.png",
+    "image_b": "output/playwright/particle-layer-blur-curve-restored.png",
+    "mean_rgb_diff": [
+      0.9251,
+      0.7402,
+      0.0
+    ],
+    "bbox": [
+      0,
+      0,
+      404,
+      202
+    ],
+    "non_zero_pixels": 32472
+  },
+  "curve_migration": {
+    "image_a": "output/playwright/particle-layer-blur-curve-clean.png",
+    "image_b": "output/playwright/particle-layer-blur-curve-migrated.png",
+    "mean_rgb_diff": [
+      2.5273,
+      1.3325,
+      0.0
+    ],
+    "bbox": [
+      3,
+      0,
+      404,
+      202
+    ],
+    "non_zero_pixels": 34305
+  }
+}

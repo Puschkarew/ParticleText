@@ -1,0 +1,50 @@
+{
+  "appUrl": "http://localhost:8000",
+  "headedAttempt": {
+    "ok": true,
+    "error": null
+  },
+  "launchMode": "headed",
+  "viewport": {
+    "width": 1440,
+    "height": 1024
+  },
+  "consoleErrors": [],
+  "pageErrors": [],
+  "fetchedSvgUrls": [
+    "http://localhost:8000/Break%20the%20Shape.svg"
+  ],
+  "checks": {
+    "initialState": {
+      "backgroundColor": "rgb(253, 180, 223)",
+      "themeColor": "#fdb4df",
+      "tileColor": "#fdb4df",
+      "backgroundInput": "#fdb4df",
+      "pointInput": "#ffffff",
+      "preset": "desktop",
+      "presetLabel": "Desktop"
+    },
+    "backgroundUpdatedState": {
+      "backgroundColor": "rgb(0, 0, 0)",
+      "themeColor": "#000000",
+      "tileColor": "#000000",
+      "backgroundInput": "#000000"
+    },
+    "afterColorState": {
+      "backgroundInput": "#000000",
+      "pointInput": "#ff0000",
+      "themeColor": "#000000"
+    },
+    "afterBackgroundRestore": {
+      "backgroundColor": "rgb(253, 180, 223)",
+      "backgroundInput": "#fdb4df",
+      "pointInput": "#ff0000"
+    },
+    "afterPresetState": {
+      "preset": "desktop",
+      "presetLabel": "Desktop",
+      "backgroundInput": "#fdb4df",
+      "pointInput": "#ff0000"
+    }
+  }
+}

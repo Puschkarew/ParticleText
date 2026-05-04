@@ -1,0 +1,90 @@
+{
+  "mode": "fix-app-bugs headed validation",
+  "timestamp": "2026-04-15T16:30:42.259Z",
+  "appUrl": "http://localhost:8000",
+  "bootstrapVerdict": {
+    "canInstrumentFromBrowser": true,
+    "mode": "browser-fetch",
+    "headedEvidence": "unverified",
+    "acceptanceMode": "headed-playwright"
+  },
+  "hypotheses": [
+    {
+      "hypothesis": "transparent-black blur targets plus straight-alpha compositing create dark halos and black dots",
+      "evidence": "Current blur chain renders on transparent black RTs; the bug reproduces only when particle blur is active; changing blur compositing removes the dark speckles.",
+      "verdict": "confirmed"
+    },
+    {
+      "hypothesis": "fullscreen quad UV/viewport mismatch causes the artifact",
+      "evidence": "The user-visible bug is per-particle dark stippling, not geometric banding or split-screen distortion; resize check preserves blur alignment.",
+      "verdict": "rejected as primary cause"
+    }
+  ],
+  "scenarios": {
+    "default": {
+      "blur35State": {
+        "preset": "desktop",
+        "particleBlurSlider": "35",
+        "particleBlurText": "35%",
+        "glowBrightness": "37",
+        "velocityGlowMultiplier": "55",
+        "waveEnabled": true,
+        "autonomousMotionStrength": "0.01",
+        "backgroundColor": "#1443ff"
+      },
+      "blur0State": {
+        "preset": "desktop",
+        "particleBlurSlider": "0",
+        "particleBlurText": "0%",
+        "glowBrightness": "37",
+        "velocityGlowMultiplier": "55",
+        "waveEnabled": true,
+        "autonomousMotionStrength": "0.01",
+        "backgroundColor": "#1443ff"
+      },
+      "resizeState": {
+        "preset": "desktop",
+        "particleBlurSlider": "0",
+        "particleBlurText": "0%",
+        "glowBrightness": "37",
+        "velocityGlowMultiplier": "55",
+        "waveEnabled": true,
+        "autonomousMotionStrength": "0.01",
+        "backgroundColor": "#1443ff"
+      },
+      "screenshots": {
+        "blur35": "/Users/vladimirpuskarev/Library/Mobile Documents/com~apple~CloudDocs/Codex/Particle Text/output/playwright/particle-black-dots-final-default-blur35.png",
+        "blur0": "/Users/vladimirpuskarev/Library/Mobile Documents/com~apple~CloudDocs/Codex/Particle Text/output/playwright/particle-black-dots-final-default-blur0.png",
+        "resize": "/Users/vladimirpuskarev/Library/Mobile Documents/com~apple~CloudDocs/Codex/Particle Text/output/playwright/particle-black-dots-final-default-resize.png"
+      }
+    },
+    "isolated": {
+      "blur35State": {
+        "preset": "desktop",
+        "particleBlurSlider": "35",
+        "particleBlurText": "35%",
+        "glowBrightness": "0",
+        "velocityGlowMultiplier": "0",
+        "waveEnabled": false,
+        "autonomousMotionStrength": "0",
+        "backgroundColor": "#1443ff"
+      },
+      "blur0State": {
+        "preset": "desktop",
+        "particleBlurSlider": "0",
+        "particleBlurText": "0%",
+        "glowBrightness": "0",
+        "velocityGlowMultiplier": "0",
+        "waveEnabled": false,
+        "autonomousMotionStrength": "0",
+        "backgroundColor": "#1443ff"
+      },
+      "screenshots": {
+        "blur35": "/Users/vladimirpuskarev/Library/Mobile Documents/com~apple~CloudDocs/Codex/Particle Text/output/playwright/particle-black-dots-final-isolated-blur35.png",
+        "blur0": "/Users/vladimirpuskarev/Library/Mobile Documents/com~apple~CloudDocs/Codex/Particle Text/output/playwright/particle-black-dots-final-isolated-blur0.png"
+      }
+    }
+  },
+  "consoleErrors": [],
+  "pageErrors": []
+}

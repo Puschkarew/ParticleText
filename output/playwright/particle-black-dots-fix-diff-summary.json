@@ -1,0 +1,34 @@
+{
+  "repro_vs_fixed": {
+    "image_a": "output/playwright/particle-black-dots-repro.png",
+    "image_b": "output/playwright/particle-black-dots-fixed-final.png",
+    "mean_rgb_diff": [
+      23.0775,
+      22.7845,
+      5.6447
+    ],
+    "bbox": [
+      0,
+      0,
+      1440,
+      1024
+    ],
+    "non_zero_pixels": 1328406
+  },
+  "blur0_vs_fixed": {
+    "image_a": "output/playwright/particle-black-dots-fixed-final-blur-0.png",
+    "image_b": "output/playwright/particle-black-dots-fixed-final.png",
+    "mean_rgb_diff": [
+      22.45,
+      20.8251,
+      0.0605
+    ],
+    "bbox": [
+      0,
+      0,
+      1440,
+      1024
+    ],
+    "non_zero_pixels": 1150872
+  }
+}

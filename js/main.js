@@ -33,9 +33,12 @@ window.addEventListener('unhandledrejection', (event) => {
 });
 
 // ========== ПАРАМЕТРЫ ==========
-const PARTICLE_CONFIG_VERSION = 2;
+const isParticleEmbed = document.documentElement.dataset.particleEmbed === 'true';
+
+const PARTICLE_CONFIG_VERSION = 3;
 const DEFAULT_LOAD_ANIMATION_DURATION = 4000;
-const DEFAULT_LOAD_ANIMATION_EASING_CURVE = { p1x: 0.03, p1y: 0.90, p2x: 0.55, p2y: 0.92 };
+// Совпадает с пресетом ease-out в редакторе кривой
+const DEFAULT_LOAD_ANIMATION_EASING_CURVE = { p1x: 0, p1y: 0, p2x: 0.58, p2y: 1 };
 
 function cloneLoadAnimationEasingCurve(curve) {
     return {
@@ -113,6 +116,9 @@ function loadConfigFromStorage() {
 
 // Функция сохранения настроек в localStorage
 function saveConfigToStorage() {
+    if (isParticleEmbed) {
+        return;
+    }
     try {
         persistStoredConfig({
             version: PARTICLE_CONFIG_VERSION,
@@ -124,8 +130,8 @@ function saveConfigToStorage() {
     }
 }
 
-// Загружаем сохраненные настройки
-const savedConfig = loadConfigFromStorage();
+// Загружаем сохраненные настройки (во встраиваемой версии не используем localStorage)
+const savedConfig = isParticleEmbed ? null : loadConfigFromStorage();
 
 const DESKTOP_PRESET_CONFIG = {
     particleCount: 10000,
@@ -137,12 +143,12 @@ const DESKTOP_PRESET_CONFIG = {
     returnSpeed: 0.030,
     springConstant: 0.20,
     damping: 0.90,
-    timeScale: 0.85,
-    pointSize: 2,
+    timeScale: 0.80,
+    pointSize: 1,
     backgroundColor: '#1443ff',
     pointColor: '#ffffff',
     sizeVariation: 0.5,
-    autonomousMotionStrength: 0.01,
+    autonomousMotionStrength: 0.02,
     chaosAngle: 45,
     chaosStrength: 0.8,
     tangentialForceRatio: 0.4,
@@ -158,11 +164,11 @@ const DESKTOP_PRESET_CONFIG = {
     waveForce: 0.002,
     waveGlowIntensity: 1.0,
     waveForceFalloff: 1.4,
-    maxBrightness: 0.8,
+    maxBrightness: 0.77,
     depthDarkeningStrength: 3.0,
-    glowBrightness: 0.37,
-    glowRadius: 24.0,
-    velocityGlowMultiplier: 0.55,
+    glowBrightness: 0.31,
+    glowRadius: 38.0,
+    velocityGlowMultiplier: 0.85,
     explosionEnabled: true,
     explosionForce: 10.0,
     explosionSpeed: 0.20,
@@ -175,8 +181,7 @@ const DESKTOP_PRESET_CONFIG = {
 
 const MOBILE_PRESET_CONFIG = {
     ...DESKTOP_PRESET_CONFIG,
-    particleCount: 7500,
-    autonomousMotionStrength: 0.02
+    particleCount: 7500
 };
 
 const PRESET_CONFIG_KEYS = Object.keys(DESKTOP_PRESET_CONFIG);
@@ -2647,20 +2652,21 @@ function updatePhysics() {
 const controls = document.getElementById('controls');
 const toggleBtn = document.getElementById('toggleControls');
 
-toggleBtn.addEventListener('click', () => {
-    const isHidden = controls.classList.contains('hidden');
-    controls.classList.toggle('hidden');
-    toggleBtn.textContent = controls.classList.contains('hidden') ? 'Показать настройки' : 'Скрыть настройки';
-    
-    // Если панель показывается после скрытия, переинициализируем canvas кривой
-    if (isHidden) {
-        // Ждем, пока панель полностью отобразится
-        requestAnimationFrame(() => {
-            setupCanvasResolution();
-            drawCurve();
-        });
-    }
-});
+if (controls && toggleBtn) {
+    toggleBtn.addEventListener('click', () => {
+        const isHidden = controls.classList.contains('hidden');
+        controls.classList.toggle('hidden');
+        toggleBtn.textContent = controls.classList.contains('hidden') ? 'Показать настройки' : 'Скрыть настройки';
+
+        // Если панель показывается после скрытия, переинициализируем canvas кривой
+        if (isHidden) {
+            requestAnimationFrame(() => {
+                setupCanvasResolution();
+                drawCurve();
+            });
+        }
+    });
+}
 
 // Привязка слайдеров к значениям
 function setupControl(id, configKey, valueId) {
@@ -2846,7 +2852,10 @@ if (savedConfig) {
     
     if (durationSlider && savedConfig.loadAnimationDuration !== undefined) {
         durationSlider.value = savedConfig.loadAnimationDuration;
-        document.getElementById('loadAnimationDurationValue').textContent = savedConfig.loadAnimationDuration.toFixed(0);
+        const durationValueEl = document.getElementById('loadAnimationDurationValue');
+        if (durationValueEl) {
+            durationValueEl.textContent = savedConfig.loadAnimationDuration.toFixed(0);
+        }
     }
     if (savedConfig.loadAnimationEasingCurve) {
         CONFIG.loadAnimationEasingCurve = cloneLoadAnimationEasingCurve(savedConfig.loadAnimationEasingCurve);
@@ -2865,10 +2874,13 @@ loadAnimationSliders.forEach(id => {
 });
 
 // ========== РЕДАКТОР КРИВОЙ БЕЗЬЕ ==========
-const curveCanvas = document.getElementById('curveEditor');
+const curveCanvas = isParticleEmbed ? null : document.getElementById('curveEditor');
 
 // Функция для исправления позиции и стилей canvas
 function fixCanvasPosition() {
+    if (!curveCanvas) {
+        return;
+    }
     // Находим блок "Настройки анимации загрузки"
     const loadAnimationSection = Array.from(document.querySelectorAll('#controls > div')).find(div => {
         const style = div.getAttribute('style') || '';
@@ -2921,27 +2933,29 @@ function fixCanvasPosition() {
     }
 }
 
-// Исправляем позицию canvas сразу
-fixCanvasPosition();
+if (curveCanvas) {
+    fixCanvasPosition();
+}
 
 // Также исправляем при изменении DOM (на случай, если что-то переместит canvas)
-const observer = new MutationObserver(() => {
-    if (curveCanvas.parentElement && !curveCanvas.parentElement.closest('#controls > div[style*="border-top: 2px solid"]')) {
-        fixCanvasPosition();
-    }
-});
+if (curveCanvas && controls) {
+    const curveEditorObserver = new MutationObserver(() => {
+        if (curveCanvas.parentElement && !curveCanvas.parentElement.closest('#controls > div[style*="border-top: 2px solid"]')) {
+            fixCanvasPosition();
+        }
+    });
+    curveEditorObserver.observe(controls, {
+        childList: true,
+        subtree: true
+    });
+}
 
-observer.observe(document.getElementById('controls'), {
-    childList: true,
-    subtree: true
-});
-
-const curveCtx = curveCanvas.getContext('2d');
+const curveCtx = curveCanvas ? curveCanvas.getContext('2d') : null;
 
 // Настраиваем canvas для высокого разрешения (Retina)
 function setupCanvasResolution() {
-    if (!curveCanvas) return;
-    
+    if (!curveCanvas || !curveCtx) return;
+
     const rect = curveCanvas.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
     
@@ -2971,8 +2985,10 @@ function setupCanvasResolution() {
 
 // Пересчитываем разрешение при изменении размера окна
 window.addEventListener('resize', () => {
-    setupCanvasResolution();
-    drawCurve();
+    if (curveCanvas && curveCtx) {
+        setupCanvasResolution();
+        drawCurve();
+    }
 });
 
 const padding = 20;
@@ -2989,11 +3005,13 @@ const curvePresets = {
 
 // Функция отрисовки кривой Безье на canvas
 function drawCurve() {
-    if (!curveCanvas || curveCanvas.width === 0 || curveCanvas.height === 0) {
-        // Если canvas не готов, переустанавливаем разрешение и пробуем снова
+    if (!curveCanvas || !curveCtx) {
+        return;
+    }
+    if (curveCanvas.width === 0 || curveCanvas.height === 0) {
         setupCanvasResolution();
         if (curveCanvas.width === 0 || curveCanvas.height === 0) {
-            return; // Если все еще нулевые размеры, выходим
+            return;
         }
     }
     
@@ -3182,84 +3200,82 @@ function getPointUnderMouse(event) {
 }
 
 // Обработчики событий для перетаскивания
-curveCanvas.addEventListener('mousedown', (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    const point = getPointUnderMouse(event);
-    if (point) {
-        isDragging = true;
-        draggedPoint = point;
-        curveCanvas.style.cursor = 'grabbing';
-    }
-});
-
-curveCanvas.addEventListener('mousemove', (event) => {
-    if (isDragging && draggedPoint) {
+if (curveCanvas) {
+    curveCanvas.addEventListener('mousedown', (event) => {
         event.preventDefault();
         event.stopPropagation();
-        const mouse = getPointFromMouse(event);
-        // Ограничиваем координаты в диапазоне [0, 1]
-        CONFIG.loadAnimationEasingCurve[draggedPoint + 'x'] = Math.max(0, Math.min(1, mouse.x));
-        CONFIG.loadAnimationEasingCurve[draggedPoint + 'y'] = Math.max(0, Math.min(1, mouse.y));
-        drawCurve();
-        saveConfigToStorage();
-    } else {
         const point = getPointUnderMouse(event);
-        curveCanvas.style.cursor = point ? 'grab' : 'crosshair';
-    }
-});
+        if (point) {
+            isDragging = true;
+            draggedPoint = point;
+            curveCanvas.style.cursor = 'grabbing';
+        }
+    });
 
-curveCanvas.addEventListener('mouseup', (event) => {
-    if (isDragging) {
-        event.preventDefault();
-        event.stopPropagation();
-    }
-    isDragging = false;
-    draggedPoint = null;
-    curveCanvas.style.cursor = 'crosshair';
-});
-
-curveCanvas.addEventListener('mouseleave', () => {
-    isDragging = false;
-    draggedPoint = null;
-    curveCanvas.style.cursor = 'crosshair';
-});
-
-// Также обрабатываем события на уровне документа для корректной работы при выходе за пределы canvas
-document.addEventListener('mousemove', (event) => {
-    if (isDragging && draggedPoint) {
-        const rect = curveCanvas.getBoundingClientRect();
-        // Проверяем, что мышь все еще над canvas
-        if (event.clientX >= rect.left && event.clientX <= rect.right &&
-            event.clientY >= rect.top && event.clientY <= rect.bottom) {
+    curveCanvas.addEventListener('mousemove', (event) => {
+        if (isDragging && draggedPoint) {
+            event.preventDefault();
+            event.stopPropagation();
             const mouse = getPointFromMouse(event);
             CONFIG.loadAnimationEasingCurve[draggedPoint + 'x'] = Math.max(0, Math.min(1, mouse.x));
             CONFIG.loadAnimationEasingCurve[draggedPoint + 'y'] = Math.max(0, Math.min(1, mouse.y));
             drawCurve();
             saveConfigToStorage();
+        } else {
+            const point = getPointUnderMouse(event);
+            curveCanvas.style.cursor = point ? 'grab' : 'crosshair';
         }
-    }
-});
+    });
 
-document.addEventListener('mouseup', () => {
-    if (isDragging) {
+    curveCanvas.addEventListener('mouseup', (event) => {
+        if (isDragging) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
         isDragging = false;
         draggedPoint = null;
         curveCanvas.style.cursor = 'crosshair';
-    }
-});
+    });
 
-// Обработчики для кнопок предустановленных кривых
-document.querySelectorAll('.preset-button').forEach(button => {
-    button.addEventListener('click', () => {
-        const preset = button.dataset.preset;
-        if (curvePresets[preset]) {
-            CONFIG.loadAnimationEasingCurve = { ...curvePresets[preset] };
-            drawCurve();
-            saveConfigToStorage();
+    curveCanvas.addEventListener('mouseleave', () => {
+        isDragging = false;
+        draggedPoint = null;
+        curveCanvas.style.cursor = 'crosshair';
+    });
+
+    document.addEventListener('mousemove', (event) => {
+        if (isDragging && draggedPoint) {
+            const rect = curveCanvas.getBoundingClientRect();
+            if (event.clientX >= rect.left && event.clientX <= rect.right &&
+                event.clientY >= rect.top && event.clientY <= rect.bottom) {
+                const mouse = getPointFromMouse(event);
+                CONFIG.loadAnimationEasingCurve[draggedPoint + 'x'] = Math.max(0, Math.min(1, mouse.x));
+                CONFIG.loadAnimationEasingCurve[draggedPoint + 'y'] = Math.max(0, Math.min(1, mouse.y));
+                drawCurve();
+                saveConfigToStorage();
+            }
         }
     });
-});
+
+    document.addEventListener('mouseup', () => {
+        if (isDragging) {
+            isDragging = false;
+            draggedPoint = null;
+            curveCanvas.style.cursor = 'crosshair';
+        }
+    });
+
+    document.querySelectorAll('.preset-button').forEach(button => {
+        button.addEventListener('click', () => {
+            const preset = button.dataset.preset;
+            if (curvePresets[preset]) {
+                CONFIG.loadAnimationEasingCurve = { ...curvePresets[preset] };
+                drawCurve();
+                saveConfigToStorage();
+            }
+        });
+    });
+}
 
 // Инициализируем отрисовку кривой после полной загрузки DOM
 // Используем несколько задержек для гарантии, что canvas уже отрендерен и находится в правильном месте
@@ -3334,66 +3350,60 @@ if (restartButton) {
 // Обработчик для количества точек с debounce для оптимизации
 const particleCountSlider = document.getElementById('particleCount');
 const particleCountValue = document.getElementById('particleCountValue');
-// ===== ИНИЦИАЛИЗАЦИЯ из CONFIG =====
-particleCountSlider.value = CONFIG.particleCount;
-particleCountValue.textContent = CONFIG.particleCount;
-
 let particleCountTimeout = null;
 let lastRecreateCallTime = 0; // Отслеживаем время последнего вызова recreateParticles
-particleCountSlider.addEventListener('input', (e) => {
-    const value = parseInt(e.target.value);
-    CONFIG.particleCount = value;
-    particleCountValue.textContent = value;
-    
-    // Debounce: пересоздаём частицы только после остановки изменения слайдера
-    clearTimeout(particleCountTimeout);
-    particleCountTimeout = setTimeout(async () => {
-        lastRecreateCallTime = Date.now();
-        await recreateParticles();
-    }, 300); // Ждём 300ms после последнего изменения
-});
+if (particleCountSlider && particleCountValue) {
+    particleCountSlider.value = CONFIG.particleCount;
+    particleCountValue.textContent = CONFIG.particleCount;
+    particleCountSlider.addEventListener('input', (e) => {
+        const value = parseInt(e.target.value, 10);
+        CONFIG.particleCount = value;
+        particleCountValue.textContent = value;
+        clearTimeout(particleCountTimeout);
+        particleCountTimeout = setTimeout(async () => {
+            lastRecreateCallTime = Date.now();
+            await recreateParticles();
+        }, 300);
+    });
+}
 
 // Обработчик для количества внешних точек с debounce для оптимизации
 const outsideParticleCountSlider = document.getElementById('outsideParticleCount');
 const outsideParticleCountValue = document.getElementById('outsideParticleCountValue');
-// ===== ИНИЦИАЛИЗАЦИЯ из CONFIG =====
-outsideParticleCountSlider.value = CONFIG.outsideParticleCount;
-outsideParticleCountValue.textContent = CONFIG.outsideParticleCount;
-
 let outsideParticleCountTimeout = null;
-outsideParticleCountSlider.addEventListener('input', (e) => {
-    const value = parseInt(e.target.value);
-    CONFIG.outsideParticleCount = value;
-    outsideParticleCountValue.textContent = value;
-    
-    // Debounce: пересоздаём частицы только после остановки изменения слайдера
-    clearTimeout(outsideParticleCountTimeout);
-    outsideParticleCountTimeout = setTimeout(async () => {
-        lastRecreateCallTime = Date.now();
-        await recreateParticles();
-    }, 300); // Ждём 300ms после последнего изменения
-});
+if (outsideParticleCountSlider && outsideParticleCountValue) {
+    outsideParticleCountSlider.value = CONFIG.outsideParticleCount;
+    outsideParticleCountValue.textContent = CONFIG.outsideParticleCount;
+    outsideParticleCountSlider.addEventListener('input', (e) => {
+        const value = parseInt(e.target.value, 10);
+        CONFIG.outsideParticleCount = value;
+        outsideParticleCountValue.textContent = value;
+        clearTimeout(outsideParticleCountTimeout);
+        outsideParticleCountTimeout = setTimeout(async () => {
+            lastRecreateCallTime = Date.now();
+            await recreateParticles();
+        }, 300);
+    });
+}
 
 // Обработчик для процента невидимых точек вне формы с debounce для оптимизации
 const outsideInvisiblePercentageSlider = document.getElementById('outsideInvisiblePercentage');
 const outsideInvisiblePercentageValue = document.getElementById('outsideInvisiblePercentageValue');
-// ===== ИНИЦИАЛИЗАЦИЯ из CONFIG =====
-outsideInvisiblePercentageSlider.value = CONFIG.outsideInvisiblePercentage;
-outsideInvisiblePercentageValue.textContent = CONFIG.outsideInvisiblePercentage + '%';
-
 let outsideInvisiblePercentageTimeout = null;
-outsideInvisiblePercentageSlider.addEventListener('input', (e) => {
-    const value = parseInt(e.target.value);
-    CONFIG.outsideInvisiblePercentage = value;
-    outsideInvisiblePercentageValue.textContent = value + '%';
-    
-    // Debounce: пересоздаём частицы только после остановки изменения слайдера
-    clearTimeout(outsideInvisiblePercentageTimeout);
-    outsideInvisiblePercentageTimeout = setTimeout(async () => {
-        lastRecreateCallTime = Date.now();
-        await recreateParticles();
-    }, 300); // Ждём 300ms после последнего изменения
-});
+if (outsideInvisiblePercentageSlider && outsideInvisiblePercentageValue) {
+    outsideInvisiblePercentageSlider.value = CONFIG.outsideInvisiblePercentage;
+    outsideInvisiblePercentageValue.textContent = CONFIG.outsideInvisiblePercentage + '%';
+    outsideInvisiblePercentageSlider.addEventListener('input', (e) => {
+        const value = parseInt(e.target.value, 10);
+        CONFIG.outsideInvisiblePercentage = value;
+        outsideInvisiblePercentageValue.textContent = value + '%';
+        clearTimeout(outsideInvisiblePercentageTimeout);
+        outsideInvisiblePercentageTimeout = setTimeout(async () => {
+            lastRecreateCallTime = Date.now();
+            await recreateParticles();
+        }, 300);
+    });
+}
 
 // ========== ОГРАНИЧЕНИЕ FPS ==========
 let maxFPS = 0; // По умолчанию без ограничения (0 = без ограничения)
@@ -3620,9 +3630,10 @@ function animate() {
     
     updatePhysics();
     renderOptimizedGlowFrame();
-    
-    // Обновляем мониторинг производительности каждый кадр для точного подсчёта FPS
-    PerformanceMonitor.update();
+
+    if (!isParticleEmbed) {
+        PerformanceMonitor.update();
+    }
 }
 
 // Debounce для автопереключения пресетов при resize

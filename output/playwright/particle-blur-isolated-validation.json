@@ -1,0 +1,15 @@
+{
+  "appUrl": "http://localhost:8000",
+  "settings": {
+    "glowBrightness": "0",
+    "velocityGlowMultiplier": "0",
+    "waveEnabled": false,
+    "autonomousMotionStrength": "0",
+    "particleBlur0": "0",
+    "particleBlur35": "35"
+  },
+  "screenshots": {
+    "isolated0": "/Users/vladimirpuskarev/Library/Mobile Documents/com~apple~CloudDocs/Codex/Particle Text/output/playwright/particle-blur-isolated-0.png",
+    "isolated35": "/Users/vladimirpuskarev/Library/Mobile Documents/com~apple~CloudDocs/Codex/Particle Text/output/playwright/particle-blur-isolated-35.png"
+  }
+}

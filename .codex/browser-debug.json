@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "projectId": "particle-text",
+  "appUrl": "http://localhost:8000",
+  "agent": {
+    "host": "127.0.0.1",
+    "corePort": 4678,
+    "debugPort": 7331
+  },
+  "browser": {
+    "cdpPort": 9222
+  },
+  "capture": {
+    "allowedDomains": [
+      "localhost",
+      "127.0.0.1"
+    ],
+    "networkAllowlist": []
+  },
+  "defaults": {
+    "queryWindowMinutes": 30
+  }
+}

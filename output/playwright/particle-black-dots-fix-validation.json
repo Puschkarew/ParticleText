@@ -1,0 +1,15 @@
+{
+  "consoleErrors": [],
+  "pageErrors": [],
+  "blackDotsScenario": "/Users/vladimirpuskarev/Library/Mobile Documents/com~apple~CloudDocs/Codex/Particle Text/output/playwright/particle-black-dots-fixed.png",
+  "blur0Scenario": "/Users/vladimirpuskarev/Library/Mobile Documents/com~apple~CloudDocs/Codex/Particle Text/output/playwright/particle-black-dots-fixed-blur-0.png",
+  "resizeScenario": "/Users/vladimirpuskarev/Library/Mobile Documents/com~apple~CloudDocs/Codex/Particle Text/output/playwright/particle-black-dots-fixed-resize.png",
+  "state": {
+    "particleBlur": "0",
+    "glowBrightness": "0",
+    "velocityGlowMultiplier": "0",
+    "waveEnabled": false,
+    "autonomousMotionStrength": "0",
+    "preset": "desktop"
+  }
+}

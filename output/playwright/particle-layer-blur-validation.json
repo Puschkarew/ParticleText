@@ -1,0 +1,89 @@
+{
+  "appUrl": "http://localhost:8000",
+  "headed": true,
+  "newCurve": {
+    "p1x": 0.03,
+    "p1y": 0.9,
+    "p2x": 0.55,
+    "p2y": 0.92
+  },
+  "screenshots": {
+    "curveClean": "/Users/vladimirpuskarev/Library/Mobile Documents/com~apple~CloudDocs/Codex/Particle Text/output/playwright/particle-layer-blur-curve-clean.png",
+    "full35": "/Users/vladimirpuskarev/Library/Mobile Documents/com~apple~CloudDocs/Codex/Particle Text/output/playwright/particle-layer-blur-full-35.png",
+    "full0": "/Users/vladimirpuskarev/Library/Mobile Documents/com~apple~CloudDocs/Codex/Particle Text/output/playwright/particle-layer-blur-full-0.png",
+    "fullRestored35": "/Users/vladimirpuskarev/Library/Mobile Documents/com~apple~CloudDocs/Codex/Particle Text/output/playwright/particle-layer-blur-full-restored-35.png",
+    "isolated0": "/Users/vladimirpuskarev/Library/Mobile Documents/com~apple~CloudDocs/Codex/Particle Text/output/playwright/particle-layer-blur-isolated-0.png",
+    "isolated35": "/Users/vladimirpuskarev/Library/Mobile Documents/com~apple~CloudDocs/Codex/Particle Text/output/playwright/particle-layer-blur-isolated-35.png",
+    "curveRestored": "/Users/vladimirpuskarev/Library/Mobile Documents/com~apple~CloudDocs/Codex/Particle Text/output/playwright/particle-layer-blur-curve-restored.png",
+    "curveMigrated": "/Users/vladimirpuskarev/Library/Mobile Documents/com~apple~CloudDocs/Codex/Particle Text/output/playwright/particle-layer-blur-curve-migrated.png"
+  },
+  "consoleErrors": [],
+  "pageErrors": [],
+  "cleanState": {
+    "preset": "desktop",
+    "particleBlur": "35",
+    "particleBlurText": "35%",
+    "glowBrightness": "37",
+    "velocityGlowMultiplier": "55",
+    "waveEnabled": true,
+    "autonomousMotionStrength": "0.01",
+    "loadAnimationDuration": "4000",
+    "backgroundColor": "#1443ff",
+    "pointColor": "#ffffff",
+    "particleCount": "10000",
+    "localStorageParticleConfig": null
+  },
+  "restoredState": {
+    "preset": "desktop",
+    "particleBlur": "35",
+    "particleBlurText": "35%",
+    "glowBrightness": "37",
+    "velocityGlowMultiplier": "55",
+    "waveEnabled": true,
+    "autonomousMotionStrength": "0.01",
+    "loadAnimationDuration": "4000",
+    "backgroundColor": "#1443ff",
+    "pointColor": "#ffffff",
+    "particleCount": "10000",
+    "localStorageParticleConfig": null
+  },
+  "isolatedState0": {
+    "preset": "desktop",
+    "particleBlur": "0",
+    "particleBlurText": "0%",
+    "glowBrightness": "0",
+    "velocityGlowMultiplier": "0",
+    "waveEnabled": false,
+    "autonomousMotionStrength": "0",
+    "loadAnimationDuration": "4000",
+    "backgroundColor": "#1443ff",
+    "pointColor": "#ffffff",
+    "particleCount": "10000",
+    "localStorageParticleConfig": null
+  },
+  "isolatedState35": {
+    "preset": "desktop",
+    "particleBlur": "35",
+    "particleBlurText": "35%",
+    "glowBrightness": "0",
+    "velocityGlowMultiplier": "0",
+    "waveEnabled": false,
+    "autonomousMotionStrength": "0",
+    "loadAnimationDuration": "4000",
+    "backgroundColor": "#1443ff",
+    "pointColor": "#ffffff",
+    "particleCount": "10000",
+    "localStorageParticleConfig": null
+  },
+  "migratedStoredConfig": {
+    "version": 2,
+    "loadAnimationDuration": 4000,
+    "loadAnimationEasingCurve": {
+      "p1x": 0.03,
+      "p1y": 0.9,
+      "p2x": 0.55,
+      "p2y": 0.92
+    }
+  },
+  "migratedCurveScreenshot": null
+}
